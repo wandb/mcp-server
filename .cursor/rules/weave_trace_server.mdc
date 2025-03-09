@@ -1,0 +1,6 @@
+---
+description: Building and debugging with the weave_trace_server or weave_trace_server_interface
+globs: .py
+alwaysApply: true
+---
+Building and debugging with  `weave.trace_server` and  `trace_server_interface ` always refer to the documentation at [weave_trace-server_interface_query.txt](mdc:weave_trace-server_interface_query.txt) and [weave_trace-server_trace-server_interface.txt](mdc:weave_trace-server_trace-server_interface.txt) to fully understand the availble classes and code structure of the weave trace server.

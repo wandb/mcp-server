@@ -1,0 +1,23 @@
+[project]
+name = "weave_mcp_server"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.2.0",
+    "weave>=0.51.34",
+    "simple-parsing>=0.1.7",
+    "pytest>=8.3.1",
+    "python-dotenv>=1.0.0",
+    "litellm"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+weave_mcp = "weave_mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/weave_mcp_server"]

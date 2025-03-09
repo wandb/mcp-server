@@ -1,0 +1,8 @@
+---
+description: Useful when working with the Model Context Protocol (MCP)
+globs: 
+alwaysApply: false
+---
+When working with or debugging with MCP, always refer to https://modelcontextprotocol.io/llms-full.txt as a useful reference.
+
+You can also browse and search the documentation site here for any specific topics : https://modelcontextprotocol.io/

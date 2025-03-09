@@ -1,0 +1,6 @@
+---
+description: Use this rule when installing, removing or upgrading python packages
+globs: 
+alwaysApply: false
+---
+Always try and first use `uv` for package management before reverting back to using `pip` if needed.
