@@ -22,7 +22,7 @@ def get_args():
     This function avoids circular imports by importing server module only when needed.
     """
     # Import here to avoid circular imports
-    from weave_mcp_server.server import get_server_args
+    from mcp_server.server import get_server_args
     return get_server_args()
 
 def get_weave_trace_server(api_key, project_id) :

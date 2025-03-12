@@ -20,8 +20,8 @@ from pydantic import BaseModel, Field
 from mcp.server.fastmcp import FastMCP
 
 # Import query_traces and our new utilities
-from weave_mcp_server.query import query_traces, count_traces
-from weave_mcp_server.trace_utils import process_traces
+from mcp_server.query import query_traces, count_traces
+from mcp_server.trace_utils import process_traces
 
 # Load environment variables
 load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
