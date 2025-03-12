@@ -60,18 +60,29 @@ class ServerMCPArgs:
         default="weave-mcp-server", metadata=dict(help="The Weights & Biases project to log traced MCP server calls to")
     )
 
-# Parse the command-line args
-server_args = simple_parsing.parse(ServerMCPArgs)
+# Global variable to store server args
+_server_args = None
 
-# Get API key from environment if not provided via CLI
-if not server_args.wandb_api_key:
-    server_args.wandb_api_key = os.getenv("WANDB_API_KEY", "")
+def get_server_args():
+    """Get the server arguments, parsing them if not already done."""
+    global _server_args
+    if _server_args is None:
+        _server_args = ServerMCPArgs()
+        # Only parse args when explicitly requested, not at import time
+        if os.environ.get("PARSE_ARGS_AT_IMPORT", "0") == "1":
+            _server_args = simple_parsing.parse(ServerMCPArgs)
+        
+        # Get API key from environment if not provided via CLI
+        if not _server_args.wandb_api_key:
+            _server_args.wandb_api_key = os.getenv("WANDB_API_KEY", "")
+    
+    return _server_args
 
-if server_args.use_weave:
-    if server_args.weave_entity is not None:
-        weave_entity_project = f"{server_args.weave_entity}/{server_args.weave_project}"
+if get_server_args().use_weave:
+    if get_server_args().weave_entity is not None:
+        weave_entity_project = f"{get_server_args().weave_entity}/{get_server_args().weave_project}"
     else:
-        weave_entity_project = f"{server_args.weave_project}"
+        weave_entity_project = f"{get_server_args().weave_project}"
     weave.init(weave_entity_project)
 
 def merge_metadata(metadata_list: List[Dict]) -> Dict:
@@ -468,11 +479,11 @@ async def count_traces_tool(
 def cli():
     """Command-line interface for starting the Weave MCP Server."""
     # Validate that we have the required API key
-    if not server_args.wandb_api_key:
+    if not get_server_args().wandb_api_key:
         raise ValueError("WANDB_API_KEY must be set either as an environment variable, in .env file, or as a command-line argument")
     
-    print(f"Starting Weave MCP Server for {server_args.product_name}")
-    logger.info(f"API Key configured: {'Yes' if server_args.wandb_api_key else 'No'}")
+    print(f"Starting Weave MCP Server for {get_server_args().product_name}")
+    logger.info(f"API Key configured: {'Yes' if get_server_args().wandb_api_key else 'No'}")
     
     # Run the server with stdio transport
     mcp.run(transport='stdio')

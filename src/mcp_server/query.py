@@ -15,21 +15,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-@dataclass
-class MCPServerArgs:
-    wandb_api_key: str = ""           # WANDB_API_KEY for Weights & Biases
-    product_name: str = "weave"  # Product name to run the server for, either "all", "weave" or"wandb"
-
-
-args: MCPServerArgs = simple_parsing.parse(MCPServerArgs)
-
-# Login to Weights & Biases
-if args.wandb_api_key is None:
-    wandb_api_key = os.getenv("WANDB_API_KEY")
-    if wandb_api_key is None:
-        raise ValueError("Please set WANDB_API_KEY, either as a script argument or as an env variable")
-    args.wandb_api_key = wandb_api_key
-
+# Import server args - we'll use a function to avoid circular imports
+def get_args():
+    """Get the server arguments from the server module.
+    
+    This function avoids circular imports by importing server module only when needed.
+    """
+    # Import here to avoid circular imports
+    from weave_mcp_server.server import get_server_args
+    return get_server_args()
 
 def get_weave_trace_server(api_key, project_id) :
     wandb.login(key=api_key)
@@ -104,6 +98,7 @@ def query_traces(
         )
         ```
     """
+    args = get_args()
     project_id = f"{entity_name}/{project_name}"
     trace_server = get_weave_trace_server(args.wandb_api_key, project_id)
 
@@ -463,6 +458,7 @@ def count_traces(
         )
         ```
     """
+    args = get_args()
     project_id = f"{entity_name}/{project_name}"
     trace_server = get_weave_trace_server(args.wandb_api_key, project_id)
     
