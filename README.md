@@ -1,6 +1,30 @@
-# Weave MCP Server
+# MCP Server
 
-A Model Context Protocol (MCP) server for querying Weave traces. This server allows you to interact with Weave traces through various MCP clients.
+A Model Context Protocol (MCP) server for querying [Weights & Biases Weave](https://weave-docs.wandb.ai/) traces. This server allows a MCP Client to:
+
+- query W&B Weave traces
+- write text and charts to W&B Reports
+
+## Available tools
+
+- **query_weave_traces_tool**: Queries Weave traces with powerful filtering, sorting, and pagination options.
+  Returns either complete trace data or just metadata to avoid overwhelming the LLM context window.
+
+- **count_weave_traces_tool**: Efficiently counts Weave traces matching given filters without returning the trace data.
+  Returns both total trace count and root traces count to understand project scope before querying.
+
+- **create_wandb_report_tool**: Creates a new W&B Report with markdown text and HTML-rendered visualizations.
+  Provides a permanent, shareable document for saving analysis findings and generated charts.
+
+## Usage
+
+Ensure you specify the W&B Entity and W&B Project to the LLM/MCP Client.
+
+Example query for Claude Desktop:
+
+```markdown
+how many openai.chat traces in the wandb-applied-ai-team/mcp-tests weave project? plot the most recent 5 traces over time and save to a report
+```
 
 ## Installation
 
@@ -21,99 +45,23 @@ WANDB_API_KEY=your_api_key_here
 Run the server using:
 
 ```bash
-uv run src/weave_mcp_server/server.py
+uv run src/mcp_server/server.py
 ```
 
 ## Client Setup
 
-### Cursor
+### Claude Desktop
 
-Add the server configuration to your Cursor settings:
-
-1. Open Cursor settings
-2. Navigate to the MCP section
-3. Add a new server configuration:
 ```json
-{
-    "weave-trace-mcp-server": {
+    "mcpServers": {
+        "weights_and_biases": {
         "command": "uv",
         "args": [
             "--directory",
-            "/ABSOLUTE/PATH/TO/YOUR/PROJECT",
+            "/ABSOLUTE/PATH/TO/PROJECT",
             "run",
-            "src/weave_mcp_server/server.py"
+            "src/server.py"
         ]
-    }
-}
-```
-
-### Cline
-
-Configure the server in Cline's settings:
-
-1. Open Cline's configuration file
-2. Add the server to the MCP servers section:
-```json
-{
-    "mcpServers": {
-        "weave-trace-mcp-server": {
-            "command": "uv run src/weave_mcp_server/server.py",
-            "cwd": "/ABSOLUTE/PATH/TO/YOUR/PROJECT"
         }
     }
-}
-```
-
-### Claude for Desktop
-
-Configure Claude for Desktop by editing `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-    "mcpServers": {
-        "weave-trace-mcp-server": {
-            "command": "uv",
-            "args": [
-                "--directory",
-                "/ABSOLUTE/PATH/TO/YOUR/PROJECT",
-                "run",
-                "src/weave_mcp_server/server.py"
-            ]
-        }
-    }
-}
-```
-
-## Available Tools
-
-The server provides the following tool:
-
-- `query_traces_tool`: Query Weave traces with filtering and sorting options
-  - Parameters:
-    - `entity_name`: The Weights & Biases entity name (team or username)
-    - `project_name`: The Weights & Biases project name
-    - `filters`: Optional filters for traces (display_name, op_name, trace_id, etc.)
-    - `sort_by`: Field to sort by (started_at, ended_at, op_name, etc.)
-    - `sort_direction`: Sort direction (asc or desc)
-    - `limit`: Maximum number of results to return
-    - `offset`: Number of results to skip (for pagination)
-
-## Troubleshooting
-
-If the server isn't showing up in your MCP client:
-
-1. Check the client's logs for MCP-related errors
-2. Verify your configuration file syntax
-3. Make sure the path to your project is absolute
-4. Restart the client application
-
-For detailed logs, check the client's log directory. Common locations:
-- Claude for Desktop: `~/Library/Logs/Claude/mcp*.log`
-- Cursor: Check the Cursor logs panel
-- Cline: Check the Cline output window
-
-## API Endpoints
-
-### Health Check
-
 ```
