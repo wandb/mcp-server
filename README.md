@@ -60,8 +60,33 @@ uv run src/mcp_server/server.py
             "--directory",
             "/ABSOLUTE/PATH/TO/PROJECT",
             "run",
-            "src/server.py"
+            "src/mcp_server/server.py"
         ]
         }
     }
 ```
+
+## Troubleshooting
+
+### Error: spawn uv ENOENT
+
+If you encounter an error like this when starting the MCP server:
+```
+Error: spawn uv ENOENT
+```
+
+This indicates that the `uv` package manager cannot be found. Fix this with these steps:
+
+1. Install `uv` using the official installation script:
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. If the error persists after installation, create a symlink to make `uv` available system-wide:
+   ```bash
+   sudo ln -s ~/.local/bin/uv /usr/local/bin/uv
+   ```
+
+3. Restart your application or IDE after making these changes.
+
+This ensures that the `uv` executable is accessible from standard system paths that are typically included in the PATH for all processes.
