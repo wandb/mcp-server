@@ -66,6 +66,14 @@ uv run src/mcp_server/server.py
     }
 ```
 
+## TODOs
+
+- [ ] Add W&B Models data
+- [ ] Convert to run with npx
+- [ ] Make more configurable: specify wandb URL
+- [ ] Work on reports plots prompt for consistent visualizations
+- [ ] Look into auth solutions
+
 ## Troubleshooting
 
 ### Error: spawn uv ENOENT
