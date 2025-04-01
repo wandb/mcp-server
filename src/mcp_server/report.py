@@ -71,7 +71,7 @@ def create_report(
                         wr.MediaBrowser(
                             media_keys=[k],
                             num_columns=1,
-                            layout=wr.Layout(w=20, h=60) #, x=5, y=5)
+                            layout=wr.Layout(w=20, h=20) #, x=5, y=5)
                             ),
                     ]
                 ))
