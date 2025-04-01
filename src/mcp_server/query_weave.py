@@ -31,7 +31,7 @@ def get_weave_trace_server(api_key, project_id) :
     trace_server = weave_client.server
     return trace_server
 
-# @weave.op
+
 def query_traces(
     entity_name: str,
     project_name: str,
