@@ -29,7 +29,8 @@ how many openai.chat traces in the wandb-applied-ai-team/mcp-tests weave project
 ## Installation
 
 ```bash
-uv venv && source .venv/bin/activate
+git clone https://github.com/wandb/mcp-server.git
+cd mcp-server && uv venv && source .venv/bin/activate
 uv pip install -e .
 ```
 
