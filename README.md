@@ -1,4 +1,4 @@
-# MCP Server
+# Weights & Biases MCP Server
 
 A Model Context Protocol (MCP) server for querying [Weights & Biases Weave](https://weave-docs.wandb.ai/) traces. This server allows a MCP Client to:
 
@@ -29,7 +29,8 @@ how many openai.chat traces in the wandb-applied-ai-team/mcp-tests weave project
 ## Installation
 
 ```bash
-uv venv && source .venv/bin/activate
+git clone https://github.com/wandb/mcp-server.git
+cd mcp-server && uv venv && source .venv/bin/activate
 uv pip install -e .
 ```
 
@@ -65,6 +66,14 @@ uv run src/mcp_server/server.py
         }
     }
 ```
+
+## TODOs
+
+- [ ] Add W&B Models data
+- [ ] Convert to run with npx
+- [ ] Make more configurable: specify wandb URL
+- [ ] Work on reports plots prompt for consistent visualizations
+- [ ] Look into auth solutions
 
 ## Troubleshooting
 
