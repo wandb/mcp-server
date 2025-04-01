@@ -7,13 +7,19 @@ A Model Context Protocol (MCP) server for querying [Weights & Biases Weave](http
 
 ## Available tools
 
-- **query_weave_traces_tool**: Queries Weave traces with powerful filtering, sorting, and pagination options.
+
+### wandb
+-  **`query_wandb_gql_tool`**: Execute an arbitrary GraphQL query against wandb experiment tracking data including Projects, Runs, Artifacts, Sweeps, Reports, etc.
+  
+### Weave
+- **`query_weave_traces_tool`**: Queries Weave traces with powerful filtering, sorting, and pagination options.
   Returns either complete trace data or just metadata to avoid overwhelming the LLM context window.
 
-- **count_weave_traces_tool**: Efficiently counts Weave traces matching given filters without returning the trace data.
+- **`count_weave_traces_tool`**: Efficiently counts Weave traces matching given filters without returning the trace data.
   Returns both total trace count and root traces count to understand project scope before querying.
 
-- **create_wandb_report_tool**: Creates a new W&B Report with markdown text and HTML-rendered visualizations.
+### Saving Anaysis
+- **`create_wandb_report_tool`**: Creates a new W&B Report with markdown text and HTML-rendered visualizations.
   Provides a permanent, shareable document for saving analysis findings and generated charts.
 
 ## Usage
