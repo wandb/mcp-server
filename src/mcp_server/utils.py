@@ -1,11 +1,71 @@
-from typing import Any, Dict, List
+import os
+from dataclasses import field
 import logging
+from typing import Dict, List, Optional, Any
 
-from mcp_server.query_weave import query_traces
-from mcp_server.trace_utils import process_traces
+import simple_parsing
+from dataclasses import dataclass
+import weave
 
 logger = logging.getLogger(__name__)
 
+# Define server arguments using a dataclass for simple_parsing
+@dataclass
+class ServerMCPArgs:
+    """Arguments for the Weave MCP Server."""
+
+    wandb_api_key: Optional[str] = field(
+        default=None, metadata=dict(help="Weights & Biases API key")
+    )
+    product_name: str = field(
+        default="weave", metadata=dict(help="Product name (weave, wandb, or all)")
+    )
+    use_weave: bool = field(
+        default=True,
+        metadata=dict(help="Whether or not to trace MCP server calls to weave"),
+    )
+    weave_entity: Optional[str] = field(
+        default=None,
+        metadata=dict(
+            help="The Weights & Biases entity to log traced MCP server calls to"
+        ),
+    )
+    weave_project: Optional[str] = field(
+        default="weave-mcp-server",
+        metadata=dict(
+            help="The Weights & Biases project to log traced MCP server calls to"
+        ),
+    )
+
+
+# Initialize server args global variable
+_server_args = None
+
+
+def get_server_args():
+    """Get the server arguments, parsing them if not already done."""
+    global _server_args
+    if _server_args is None:
+        _server_args = ServerMCPArgs()
+        # Only parse args when explicitly requested, not at import time
+        if os.environ.get("PARSE_ARGS_AT_IMPORT", "0") == "1":
+            _server_args = simple_parsing.parse(ServerMCPArgs)
+
+        # Get API key from environment if not provided via CLI
+        if not _server_args.wandb_api_key:
+            _server_args.wandb_api_key = os.getenv("WANDB_API_KEY", "")
+
+    return _server_args
+
+
+if get_server_args().use_weave and weave is not None:
+    if get_server_args().weave_entity is not None:
+        weave_entity_project = (
+            f"{get_server_args().weave_entity}/{get_server_args().weave_project}"
+        )
+    else:
+        weave_entity_project = f"{get_server_args().weave_project}"
+    weave.init(weave_entity_project)
 
 def merge_metadata(metadata_list: List[Dict]) -> Dict:
     """Merge metadata from multiple query results."""
@@ -67,84 +127,3 @@ def merge_metadata(metadata_list: List[Dict]) -> Dict:
         )
 
     return merged
-
-
-async def paginated_query_traces(
-    entity_name: str, project_name: str, chunk_size: int = 20, **kwargs
-) -> Dict[str, Any]:
-    """Query traces with pagination."""
-    all_raw_traces = []
-    current_offset = 0
-
-    # Extract parameters for different functions
-    target_limit = kwargs.pop("limit", None)
-    truncate_length = kwargs.pop("truncate_length", 200)
-    return_full_data = kwargs.pop("return_full_data", False)
-    metadata_only = kwargs.get("metadata_only", False)
-
-    # Parameters that go to query_traces
-    query_params = {
-        "filters": kwargs.get("filters"),
-        "sort_by": kwargs.get("sort_by"),
-        "sort_direction": kwargs.get("sort_direction"),
-        "include_costs": kwargs.get("include_costs"),
-        "include_feedback": kwargs.get("include_feedback"),
-        "columns": kwargs.get("columns"),
-        "expand_columns": kwargs.get("expand_columns"),
-    }
-    # Remove None values
-    query_params = {k: v for k, v in query_params.items() if v is not None}
-
-    # First, collect all raw traces
-    while True:
-        logger.info(f"Querying chunk with offset {current_offset}, size {chunk_size}")
-
-        # Calculate chunk size
-        remaining = target_limit - len(all_raw_traces) if target_limit else chunk_size
-        current_chunk_size = min(chunk_size, remaining) if target_limit else chunk_size
-
-        # Make the query for the current chunk
-        chunk_result = query_traces(
-            entity_name=entity_name,
-            project_name=project_name,
-            limit=current_chunk_size,
-            offset=current_offset,
-            **query_params,
-        )
-
-        # Add raw traces to collection
-        if not chunk_result:
-            break
-
-        all_raw_traces.extend(chunk_result)
-
-        # Check if we should stop
-        if len(chunk_result) < current_chunk_size or (
-            target_limit and len(all_raw_traces) >= target_limit
-        ):
-            break
-
-        current_offset += chunk_size
-
-    # Process all traces once, with appropriate parameters based on needs
-    processed_result = process_traces(
-        traces=all_raw_traces,
-        truncate_length=truncate_length
-        if not metadata_only
-        else 0,  # Only truncate if we need traces
-        return_full_data=return_full_data
-        if not metadata_only
-        else True,  # Use full data for metadata
-    )
-
-    result = {"metadata": processed_result["metadata"]}
-
-    # Add traces if needed
-    if not metadata_only:
-        result["traces"] = (
-            processed_result["traces"][:target_limit]
-            if target_limit
-            else processed_result["traces"]
-        )
-
-    return result

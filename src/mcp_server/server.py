@@ -5,25 +5,22 @@ Weave MCP Server - A Model Context Protocol server for querying Weave traces.
 
 import json
 import logging
-import os
 from dataclasses import dataclass, field
-from datetime import datetime
-from itertools import chain
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-import simple_parsing
-import wandb_workspaces.reports.v2 as wr
-import weave
-import wandb
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
+import wandb
+from wandb_gql import gql
+
 # Import query_traces and our new utilities
-from mcp_server.query_weave import count_traces, query_traces
+from mcp_server.query_weave import count_traces, paginated_query_traces
+from mcp_server.query_models import query_wandb_gql
 from mcp_server.report import create_report
-from mcp_server.trace_utils import process_traces
-from mcp_server.utils import paginated_query_traces
+from mcp_server.trace_utils import DateTimeEncoder
+from mcp_server.utils import get_server_args
 
 # Load environment variables
 load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
@@ -36,146 +33,8 @@ logger = logging.getLogger("weave-mcp-server")
 mcp = FastMCP("weave-mcp-server")
 
 
-class DateTimeEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return super().default(obj)
-
-
-# Define server arguments using a dataclass for simple_parsing
-@dataclass
-class ServerMCPArgs:
-    """Arguments for the Weave MCP Server."""
-
-    wandb_api_key: Optional[str] = field(
-        default=None, metadata=dict(help="Weights & Biases API key")
-    )
-    product_name: str = field(
-        default="weave", metadata=dict(help="Product name (weave, wandb, or all)")
-    )
-    use_weave: bool = field(
-        default=True,
-        metadata=dict(help="Whether or not to trace MCP server calls to weave"),
-    )
-    weave_entity: Optional[str] = field(
-        default=None,
-        metadata=dict(
-            help="The Weights & Biases entity to log traced MCP server calls to"
-        ),
-    )
-    weave_project: Optional[str] = field(
-        default="weave-mcp-server",
-        metadata=dict(
-            help="The Weights & Biases project to log traced MCP server calls to"
-        ),
-    )
-
-
-# Global variable to store server args
-_server_args = None
-
-
-def get_server_args():
-    """Get the server arguments, parsing them if not already done."""
-    global _server_args
-    if _server_args is None:
-        _server_args = ServerMCPArgs()
-        # Only parse args when explicitly requested, not at import time
-        if os.environ.get("PARSE_ARGS_AT_IMPORT", "0") == "1":
-            _server_args = simple_parsing.parse(ServerMCPArgs)
-
-        # Get API key from environment if not provided via CLI
-        if not _server_args.wandb_api_key:
-            _server_args.wandb_api_key = os.getenv("WANDB_API_KEY", "")
-
-    return _server_args
-
-
-if get_server_args().use_weave:
-    if get_server_args().weave_entity is not None:
-        weave_entity_project = (
-            f"{get_server_args().weave_entity}/{get_server_args().weave_project}"
-        )
-    else:
-        weave_entity_project = f"{get_server_args().weave_project}"
-    weave.init(weave_entity_project)
-
 
 @mcp.tool()
-async def create_wandb_report_tool(
-    entity_name: str,
-    project_name: str,
-    title: str,
-    description: Optional[str] = None,
-    markdown_report_text: str = None,
-    plots_html: Optional[Union[Dict[str, str], str]] = None,
-) -> wr.Report:
-    """
-    Create a new Weights & Biases Report and add text and HTML-rendered charts. Useful to save/document analysis and other findings.
-
-    Always provide the returned report link to the user.
-
-    <plots_html_usage_guide>
-    If the analsis has generated plots then they can be logged to a Weights & Biases report via converting them to html.
-    All charts should be properly rendered in raw HTML, do not use any placeholders for any chart, render everything.
-    Plot html code should use SVG chart elements that should render properly in any modern browser.
-    Include interactive hover effects where it makes sense.
-    If the analysis contains multiple charts, break up the html into one section of html per chart.
-    </plots_html_usage_guide>
-
-    Args:
-        entity_name: str, The W&B entity (team or username) - required
-        project_name: str, The W&B project name - required
-        title: str, Title of the W&B Report - required
-        description: str, Optional description of the W&B Report
-        markdown_report_text: str, beuatifully formatted markdown text for the report body
-        plots_html: str, Optional dict of plot name and html string of any charts created as part of an analysis
-
-    Returns:
-        str, The url to the report
-
-    Example:
-        ```python
-        # Create a simple report
-        report = create_report(
-            entity_name="my-team",
-            project_name="my-project",
-            title="Model Analysis Report",
-            description="Analysis of our latest model performance",
-            markdown_report_text='''
-                # Model Analysis Report
-                [TOC]
-                ## Performance Summary
-                Our model achieved 95% accuracy on the test set.
-                ### Key Metrics
-                Precision: 0.92
-                Recall: 0.89
-            '''
-        )
-        ```
-    """
-    # Handle plot_htmls if it's a JSON string
-    if isinstance(plots_html, str):
-        try:
-            plots_html = json.loads(plots_html)
-        except json.JSONDecodeError:
-            # If it's not valid JSON, keep it as is (though this will likely cause other errors)
-            pass
-    
-    report_link = create_report(
-        entity_name=entity_name,
-        project_name=project_name,
-        title=title,
-        description=description,
-        markdown_report_text=markdown_report_text,
-        plots_html=plots_html,
-    )
-    return f"The report was saved here: {report_link}"
-
-
-@mcp.tool()
-# @weave.op
 async def query_weave_traces_tool(
     entity_name: str,
     project_name: str,
@@ -381,7 +240,6 @@ async def query_weave_traces_tool(
 
 
 @mcp.tool()
-# @weave.op
 async def count_weave_traces_tool(
     entity_name: str, project_name: str, filters: Optional[Dict[str, Any]] = None
 ) -> str:
@@ -434,458 +292,272 @@ async def count_weave_traces_tool(
         return f"Error counting traces: {str(e)}"
 
 
+@mcp.tool()
+async def create_wandb_report_tool(
+    entity_name: str,
+    project_name: str,
+    title: str,
+    description: Optional[str] = None,
+    markdown_report_text: str = None,
+    plots_html: Optional[Union[Dict[str, str], str]] = None,
+) -> str:
+    """
+    Create a new Weights & Biases Report and add text and HTML-rendered charts. Useful to save/document analysis and other findings.
+
+    Always provide the returned report link to the user.
+
+    <plots_html_usage_guide>
+    If the analsis has generated plots then they can be logged to a Weights & Biases report via converting them to html.
+    All charts should be properly rendered in raw HTML, do not use any placeholders for any chart, render everything.
+    Plot html code should use SVG chart elements that should render properly in any modern browser.
+    Include interactive hover effects where it makes sense.
+    If the analysis contains multiple charts, break up the html into one section of html per chart.
+    </plots_html_usage_guide>
+
+    Args:
+        entity_name: str, The W&B entity (team or username) - required
+        project_name: str, The W&B project name - required
+        title: str, Title of the W&B Report - required
+        description: str, Optional description of the W&B Report
+        markdown_report_text: str, beuatifully formatted markdown text for the report body
+        plots_html: str, Optional dict of plot name and html string of any charts created as part of an analysis
+
+    Returns:
+        str, The url to the report
+
+    Example:
+        ```python
+        # Create a simple report
+        report = create_report(
+            entity_name="my-team",
+            project_name="my-project",
+            title="Model Analysis Report",
+            description="Analysis of our latest model performance",
+            markdown_report_text='''
+                # Model Analysis Report
+                [TOC]
+                ## Performance Summary
+                Our model achieved 95% accuracy on the test set.
+                ### Key Metrics
+                Precision: 0.92
+                Recall: 0.89
+            '''
+        )
+        ```
+    """
+    # Handle plot_htmls if it's a JSON string
+    if isinstance(plots_html, str):
+        try:
+            plots_html = json.loads(plots_html)
+        except json.JSONDecodeError:
+            # If it's not valid JSON, keep it as is (though this will likely cause other errors)
+            pass
+
+    report_link = create_report(
+        entity_name=entity_name,
+        project_name=project_name,
+        title=title,
+        description=description,
+        markdown_report_text=markdown_report_text,
+        plots_html=plots_html,
+    )
+    return f"The report was saved here: {report_link}"
+
 
 @mcp.tool()
-def query_wandb_graphql(query: str, variables: Dict[str, Any] = None) -> Dict[str, Any]:
+def query_wandb_gql_tool(query: str, variables: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Execute an arbitrary GraphQL query against the wandb API.
-    
+    Execute an arbitrary GraphQL query against the Weights & Biases (W&B) API.
+
+    This function allows interaction with W&B data (Projects, Runs, Artifacts, Sweeps, Reports, etc.)
+    using the GraphQL query language.
+
     Args:
-        query (str): The GraphQL query string
-        variables (Dict[str, Any], optional): Variables to pass to the query
-        
+        query (str): The GraphQL query string. This defines the operation (query/mutation),
+                     the data to fetch (selection set), and any variables used.
+        variables (Dict[str, Any], optional): A dictionary of variables to pass to the query.
+                                              Keys should match variable names defined in the query
+                                              (e.g., $entity, $project). Values should match the
+                                              expected types (String, Int, Float, Boolean, ID, JSONString).
+                                              Use `json.dumps()` for `JSONString` variables (e.g., filters).
+
     Returns:
-        Dict[str, Any]: The query result
+        Dict[str, Any]: The raw dictionary result from the W&B GraphQL API.
+
         
-    Example:
-        query = '''
-        query Project($entity: String!, $name: String!) {
-            project(entityName: $entity, name: $name) {
-                name
-                entity
-                description
-                runs {
-                    edges {
-                        node {
-                            id
-                            name
-                            state
-                        }
-                    }
-                }
-            }
+    **Context Managment**
+    
+    The results of this tool are returned to a LLM. Be mindful of the context window of the LLM!
+    
+    <warning_about_open_ended_queries>
+    **WARNING: AVOID OPEN-ENDED QUERIES!** 
+    
+    Open-ended queries should be strictly avoided when:
+    - There are a lot of runs in the project (e.g., hundreds or thousands)
+    - There are runs with large amounts of data (e.g., many metrics, large configs, etc.)
+    
+    Examples of problematic open-ended queries:
+    - Requesting all runs in a project without limits
+    - Requesting complete run histories without filtering specific metrics
+    - Requesting all files from artifacts without specifying names/types
+    
+    Instead, always:
+    - Use the `first` parameter to limit the number of items returned (start small, e.g., 5-10)
+    - Apply specific filters to narrow down results (e.g., state, creation time, metrics)
+    - Request only the specific fields needed, avoid selecting everything
+    - Consider paginating results if necessary (don't request everything at once)
+    
+    Bad:
+    ```graphql
+    query AllRuns($entity: String!, $project: String!) {
+      project(name: $project, entityName: $entity) {
+        runs { edges { node { id name state history summaryMetrics config files } } }
+      }
+    }
+    ```
+    
+    Good:
+    ```graphql
+    query LimitedRuns($entity: String!, $project: String!) {
+      project(name: $project, entityName: $entity) {
+        runs(first: 5, filters: "{\"state\":\"finished\"}") {
+          edges { node { id name createdAt } }
         }
-        '''
+      }
+    }
+    ```
+    </warning_about_open_ended_queries>
+    
+    Some tactics to consider to avoid exceeding the context window of the LLM when using this tool:
+      - First return just metadata about the wandb project or run you will be returning.
+      - Select only a subset of the data such as just particular columns or rows.
+      - If you need to return a large amount of data consider using the `query_wandb_gql_tool` in a loop
+      - Break up the query into smaller chunks.
+    
+    If you are returning just a sample subset of the data warn the user that this is a sample and that they should
+    use the tool again with additional filters to get a more complete view.
+
+    **Constructing GraphQL Queries:**
+
+    1.  **Operation Type:** Start with `query` for fetching data or `mutation` for modifying data.
+    2.  **Operation Name:** (Optional but recommended) A descriptive name (e.g., `ProjectInfo`).
+    3.  **Variables Definition:** Define variables used in the query with their types (e.g., `($entity: String!, $project: String!)`). `!` means required.
+    4.  **Selection Set:** Specify the fields you want to retrieve, nesting as needed based on the W&B schema.
+
+    **W&B Schema Overview:**
+
+    *   **Core Types:** `Entity`, `Project`, `Run`, `Artifact`, `Sweep`, `Report`, `User`, `Team`.
+    *   **Relationships:** Entities contain Projects. Projects contain Runs, Sweeps, Artifacts. Runs use/are used by Artifacts. Sweeps contain Runs.
+    *   **Common Fields:** `id`, `name`, `description`, `createdAt`, `config` (JSONString), `summaryMetrics` (JSONString), etc.
+    *   **Connections (Lists):** Many lists (like `project.runs`, `artifact.files`) use a connection pattern:
+        ```graphql
+        runs(first: Int, after: String, filters: JSONString) {
+          edges { node { id name ... } cursor }
+          pageInfo { hasNextPage endCursor }
+        }
+        ```
+        Use `first` for limit, `after` with `pageInfo.endCursor` for pagination, and `filters` for complex filtering.
+
+    **Query Examples:**
+
+    *   **Get Project Info:**
+        ```graphql
+        query ProjectInfo($entity: String!, $project: String!) {
+          project(name: $project, entityName: $entity) {
+            id
+            name
+            entityName
+            description
+            runCount
+          }
+        }
+        ```
+        ```python
+        variables = {"entity": "my-entity", "project": "my-project"}
+        ```
+
+    *   **Get Runs with Pagination and Filtering:**
+        ```graphql
+        query FilteredRuns($project: String!, $entity: String!, $limit: Int, $cursor: String, $filters: JSONString) {
+          project(name: $project, entityName: $entity) {
+            runs(first: $limit, after: $cursor, filters: $filters) {
+              edges {
+                node { id name state createdAt summaryMetrics }
+                cursor
+              }
+              pageInfo { endCursor hasNextPage }
+            }
+          }
+        }
+        ```
+        ```python
+        import json
         variables = {
             "entity": "my-entity",
-            "name": "my-project"
+            "project": "my-project",
+            "limit": 10,
+            "filters": json.dumps({"state": "finished", "summary_metrics.accuracy": {"$gt": 0.9}})
+            # "cursor": previous_pageInfo_endCursor # Optional for next page
         }
-        result = query_wandb_graphql(query, variables)
-    """
-    # Initialize wandb API
-    api = wandb.Api()
-    
-    # Execute the query
-    result = api.client.execute(query, variables or {})
-    
-    return result
+        ```
 
-
-@mcp.tool()
-def query_wandb_projects(entity: str) -> List[Dict[str, Any]]:
-    """
-    Fetch all projects for a specific wandb entity.
-    
-    Args:
-        entity (str): The wandb entity (username or team name)
-        
-    Returns:
-        List[Dict[str, Any]]: List of project dictionaries containing:
-            - name: Project name
-            - entity: Entity name
-            - description: Project description
-            - visibility: Project visibility (public/private)
-            - created_at: Creation timestamp
-            - updated_at: Last update timestamp
-            - tags: List of project tags
-    """
-    # Initialize wandb API
-    api = wandb.Api()
-    
-    # Get all projects for the entity
-    projects = api.projects(entity)
-    
-    # Convert projects to a list of dictionaries
-    projects_data = []
-    for project in projects:
-        project_dict = {
-            "name": project.name,
-            "entity": project.entity,
-            "description": project.description,
-            "visibility": project.visibility,
-            "created_at": project.created_at,
-            "updated_at": project.updated_at,
-            "tags": project.tags,
-        }
-        projects_data.append(project_dict)
-    
-    return projects_data
-
-@mcp.tool()
-def query_wandb_runs(
-    entity: str,
-    project: str,
-    per_page: int = 50,
-    order: str = "-created_at",
-    filters: Dict[str, Any] = None,
-    search: str = None
-) -> List[Dict[str, Any]]:
-    """
-    Fetch runs from a specific wandb entity and project with filtering and sorting support.
-    
-    Args:
-        entity (str): The wandb entity (username or team name)
-        project (str): The project name
-        per_page (int): Number of runs to fetch (default: 50)
-        order (str): Sort order (default: "-created_at"). Prefix with "-" for descending order.
-                    Examples: "created_at", "-created_at", "name", "-name", "state", "-state"
-        filters (Dict[str, Any]): Dictionary of filters to apply. Keys can be:
-            - state: "running", "finished", "crashed", "failed", "killed"
-            - tags: List of tags to filter by
-            - config: Dictionary of config parameters to filter by
-            - summary: Dictionary of summary metrics to filter by
-        search (str): Search string to filter runs by name or tags
-        
-    Returns:
-        List[Dict[str, Any]]: List of run dictionaries containing run information
-    """
-    # Initialize wandb API
-    api = wandb.Api()
-    
-    # Build query parameters
-    query_params = {
-        "per_page": per_page,
-        "order": order
-    }
-    
-    # Add filters if provided
-    if filters:
-        for key, value in filters.items():
-            if key in ["state", "tags", "config", "summary"]:
-                query_params[key] = value
-    
-    # Add search if provided
-    if search:
-        query_params["search"] = search
-    
-    # Get runs from the specified entity and project with filters
-    runs = api.runs(
-        f"{entity}/{project}",
-        **query_params
-    )
-    
-    # Convert runs to a list of dictionaries
-    runs_data = []
-    for run in runs:
-        run_dict = {
-            "id": run.id,
-            "name": run.name,
-            "state": run.state,
-            "config": run.config,
-            "summary": run.summary,
-            "created_at": run.created_at,
-            "url": run.url,
-            "tags": run.tags,
-        }
-        runs_data.append(run_dict)
-    
-    return runs_data
-
-
-@mcp.tool()
-def query_wandb_run_config(entity: str, project: str, run_id: str) -> Dict[str, Any]:
-    """
-    Fetch configuration parameters for a specific run.
-    
-    Args:
-        entity (str): The wandb entity (username or team name)
-        project (str): The project name
-        run_id (str): The ID of the run to fetch config for
-        
-    Returns:
-        Dict[str, Any]: Dictionary containing configuration parameters
-    """
-    api = wandb.Api()
-    run = api.run(f"{entity}/{project}/{run_id}")
-    return run.config
-
-
-@mcp.tool()
-def query_wandb_run_training_metrics(entity: str, project: str, run_id: str) -> Dict[str, List[Any]]:
-    """
-    Fetch training metrics history for a specific run.
-    
-    Args:
-        entity (str): The wandb entity (username or team name)
-        project (str): The project name
-        run_id (str): The ID of the run to fetch metrics for
-        
-    Returns:
-        Dict[str, List[Any]]: Dictionary mapping metric names to their history
-    """
-    api = wandb.Api()
-    run = api.run(f"{entity}/{project}/{run_id}")
-    
-    # Get the history of all metrics
-    history = run.history()
-    
-    # Convert to a more convenient format
-    metrics = {}
-    for column in history.columns:
-        if column not in ['_timestamp', '_runtime', '_step']:
-            metrics[column] = history[column].tolist()
-    
-    return metrics
-
-
-@mcp.tool()
-def query_wandb_run_system_metrics(entity: str, project: str, run_id: str) -> Dict[str, List[Any]]:
-    """
-    Fetch system metrics history for a specific run.
-    
-    Args:
-        entity (str): The wandb entity (username or team name)
-        project (str): The project name
-        run_id (str): The ID of the run to fetch metrics for
-        
-    Returns:
-        Dict[str, List[Any]]: Dictionary mapping system metric names to their history
-    """
-    api = wandb.Api()
-    run = api.run(f"{entity}/{project}/{run_id}")
-    
-    # Get the history of system metrics
-    system_metrics = run.history(stream="events")
-    
-    # Convert to a more convenient format
-    metrics = {}
-    for column in system_metrics.columns:
-        if column not in ['_timestamp', '_runtime', '_step']:
-            metrics[column] = system_metrics[column].tolist()
-    
-    return metrics
-
-
-@mcp.tool()
-def query_wandb_run_summary_metrics(entity: str, project: str, run_id: str) -> Dict[str, Any]:
-    """
-    Fetch summary metrics for a specific run.
-    
-    Args:
-        entity (str): The wandb entity (username or team name)
-        project (str): The project name
-        run_id (str): The ID of the run to fetch metrics for
-        
-    Returns:
-        Dict[str, Any]: Dictionary containing summary metrics
-    """
-    api = wandb.Api()
-    run = api.run(f"{entity}/{project}/{run_id}")
-    return run.summary
-
-
-@mcp.tool()
-def query_wandb_artifacts(
-    entity: str,
-    project: str,
-    artifact_name: Optional[str] = None,
-    artifact_type: Optional[str] = None,
-    version_alias: str = "latest"
-) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
-    """
-    Fetches details for a specific artifact or lists artifact collections of a specific type.
-
-    If artifact_name is provided, fetches details for that specific artifact.
-    If artifact_name is not provided, artifact_type must be provided to list
-    collections of that type.
-
-    Args:
-        entity (str): The wandb entity (username or team name).
-        project (str): The project name.
-        artifact_name (Optional[str]): The name of the artifact to fetch (e.g., 'my-dataset').
-                                       If None, lists collections based on artifact_type.
-        artifact_type (Optional[str]): The type of artifact collection to list.
-                                       Required if artifact_name is None.
-        version_alias (str): The version or alias for the specific artifact
-                             (e.g., 'v1', 'latest'). Defaults to 'latest'.
-                             Ignored if artifact_name is None.
-
-    Returns:
-        Union[List[Dict[str, Any]], Dict[str, Any]]:
-            - Dict[str, Any]: Details of the specified artifact if artifact_name is provided.
-            - List[Dict[str, Any]]: List of artifact collections if artifact_name is None
-                                     and artifact_type is provided.
-
-    Raises:
-        ValueError: If neither artifact_name nor artifact_type is provided,
-                    or if artifact_name is None and artifact_type is also None.
-        wandb.errors.CommError: If the specified artifact is not found when artifact_name is provided.
-    """
-    api = wandb.Api()
-
-    if artifact_name:
-        # Fetch specific artifact details (logic from get_artifact)
-        try:
-            artifact = api.artifact(name=f"{entity}/{project}/{artifact_name}:{version_alias}")
-            artifact_data = {
-                "id": artifact.id,
-                "name": artifact.name,
-                "type": artifact.type,
-                "version": artifact.version,
-                "aliases": artifact.aliases,
-                "state": artifact.state,
-                "size": artifact.size,
-                "created_at": artifact.created_at,
-                "description": artifact.description,
-                "metadata": artifact.metadata,
-                "digest": artifact.digest,
+    *   **Get Run History:**
+        ```graphql
+        query RunHistory($entity: String!, $project: String!, $runName: String!, $keys: [String!]) {
+          project(name: $project, entityName: $entity) {
+            run(name: $runName) {
+              id
+              name
+              history(keys: $keys) { rows columns } # rows is list of dicts
             }
-            return artifact_data
-        except wandb.errors.CommError as e:
-            # Re-raise to signal artifact not found or other communication issues
-            raise e
-    elif artifact_type:
-        # List artifact collections (logic from list_artifact_collections)
-        collections = api.artifact_collections(project_name=f"{entity}/{project}", type_name=artifact_type)
-        collections_data = []
-        for collection in collections:
-            collections_data.append({
-                "name": collection.name,
-                "type": collection.type,
-                "project": project, # Include project for clarity
-                "entity": entity,   # Include entity for clarity
-            })
-        return collections_data
-    else:
-        raise ValueError("Either 'artifact_name' or 'artifact_type' must be provided.")
+          }
+        }
+        ```
+        ```python
+        variables = {"entity": "my-entity", "project": "my-project", "runName": "run-abc", "keys": ["loss", "val_accuracy"]}
+        ```
 
-
-
-def query_wandb_sweeps(
-    entity: str,
-    project: str,
-    action: str,
-    sweep_id: Optional[str] = None
-) -> Union[List[Dict[str, Any]], Dict[str, Any], None]:
-    """
-    Manages W&B sweeps: either lists all sweeps in a project OR gets the best run for a specific sweep.
-
-    Use the 'action' parameter to specify the desired operation:
-    - Set action='list_sweeps' to list all sweeps in the project. 'sweep_id' is ignored.
-    - Set action='get_best_run' to find the best run for a specific sweep. 'sweep_id' is REQUIRED for this action.
-
-    Args:
-        entity (str): The wandb entity (username or team name).
-        project (str): The project name.
-        action (str): The operation to perform. Must be exactly 'list_sweeps' or 'get_best_run'.
-        sweep_id (Optional[str]): The unique ID of the sweep. This is REQUIRED only when action='get_best_run'.
-                                  It is ignored if action='list_sweeps'.
-
-    Returns:
-        Union[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
-            - If action='list_sweeps': Returns a list of unique sweeps found in the project. [List[Dict]]
-            - If action='get_best_run': Returns details of the best run for the specified sweep_id. [Dict]
-                                        Returns None if the sweep exists but has no best run yet. [None]
-
-    Raises:
-        ValueError: If 'action' is not 'list_sweeps' or 'get_best_run'.
-        ValueError: If action='get_best_run' but 'sweep_id' is not provided.
-        wandb.errors.CommError: If a provided 'sweep_id' (when action='get_best_run') is not found or other API errors occur.
-    """
-    api = wandb.Api()
-
-    if action == 'list_sweeps':
-        # List all sweeps in the project (logic from original list_wandb_sweeps)
-        runs = api.runs(f"{entity}/{project}", include_sweeps=True)
-        sweeps_found = {}
-        for run in runs:
-            if run.sweep and run.sweep.id not in sweeps_found:
-                sweep_obj = run.sweep
-                sweeps_found[sweep_obj.id] = {
-                    "id": sweep_obj.id,
-                    "config": sweep_obj.config,
-                    "metric": getattr(sweep_obj, 'metric', None),
-                    "method": getattr(sweep_obj, 'method', None),
-                    "entity": sweep_obj.entity,
-                    "project": sweep_obj.project,
-                    "state": sweep_obj.state,
-                }
-        return list(sweeps_found.values())
-
-    elif action == 'get_best_run':
-        # Get the best run for a specific sweep (logic from original get_wandb_sweep_best_run)
-        if sweep_id is None:
-            raise ValueError("The 'sweep_id' argument is required when action is 'get_best_run'.")
-
-        try:
-            sweep = api.sweep(path=f"{entity}/{project}/{sweep_id}")
-            best_run = sweep.best_run()
-
-            if best_run:
-                run_dict = {
-                    "id": best_run.id,
-                    "name": best_run.name,
-                    "state": best_run.state,
-                    "config": best_run.config,
-                    "summary": best_run.summary,
-                    "created_at": best_run.created_at,
-                    "url": best_run.url,
-                    "tags": best_run.tags,
-                }
-                return run_dict
-            else:
-                # Sweep exists, but no best run found
-                return None
-        except wandb.errors.CommError as e:
-            # Re-raise if sweep_id itself is invalid or other API error occurs
-            raise e
-    else:
-        # Invalid action specified
-        raise ValueError(f"Invalid action specified: '{action}'. Must be 'list_sweeps' or 'get_best_run'.")
-
-
-
-def query_wandb_reports(entity: str, project: str) -> List[Dict[str, Any]]:
-    """
-    List available W&B Reports within a project.
-    
-    Args:
-        entity (str): The wandb entity (username or team name)
-        project (str): The project name
-        
-    Returns:
-        List[Dict[str, Any]]: List of report dictionaries.
-    """
-    # Note: The public API for listing reports might be less direct.
-    # `api.reports` might require entity/project to be set in Api() constructor
-    # or might work differently. This is an attempt based on API structure.
-    # If this fails, GraphQL might be necessary (see execute_graphql_query).
-    try:
-        # Initialize API potentially with overrides if needed
-        api = wandb.Api(overrides={"entity": entity, "project": project})
-        reports = api.reports() # Assumes this lists reports for the configured entity/project
-        
-        reports_data = []
-        for report in reports:
-            # Attributes depend on the actual Report object structure
-            report_data = {
-                "id": getattr(report, 'id', None), # Adjust attribute names as needed
-                "name": getattr(report, 'name', None), 
-                "title": getattr(report, 'title', getattr(report, 'display_name', None)),
-                "description": getattr(report, 'description', None),
-                "url": getattr(report, 'url', None), 
-                "created_at": getattr(report, 'created_at', None),
-                "updated_at": getattr(report, 'updated_at', None),
+    *   **Get Artifact Details:**
+        ```graphql
+        query ArtifactDetails($entity: String!, $project: String!, $artifactName: String!) {
+          project(name: $project, entityName: $entity) {
+            # Assumes artifact type is implicitly known or part of the name format
+            artifact(name: $artifactName) { # Or artifactType(name:"type"){ artifact(name:"name")... }
+              id
+              digest
+              description
+              state
+              size
+              createdAt
+              metadata
+              aliases
+              files { edges { node { name url size } } }
             }
-            reports_data.append(report_data)
-        return reports_data
-    except Exception as e:
-        # Consider logging the error
-        print(f"Error listing reports for {entity}/{project}: {e}. Direct report listing might require GraphQL.")
-        # Fallback or raise error
-        return [] # Return empty list on error for now
+          }
+        }
+        ```
+        ```python
+        variables = {"entity": "my-entity", "project": "my-project", "artifactName": "my-dataset:v3"}
+        ```
 
+    *   **Create/Update Project (Mutation):**
+        ```graphql
+        mutation UpsertProject($entity: String!, $name: String!, $description: String) {
+          upsertProject(input: { entityName: $entity, name: $name, description: $description }) {
+            project { id name description }
+          }
+        }
+        ```
+        ```python
+        variables = {"entity": "my-entity", "name": "new-gql-project", "description": "Created via tool"}
+        ```
 
+    **Notes:**
+    *   Refer to the official W&B GraphQL schema (via introspection or documentation) for precise field names, types, and available filters.
+    *   Structure your query to request only the necessary data fields.
+    *   Handle potential errors in the returned dictionary (e.g., check for an 'errors' key).
+    """
+    return query_wandb_gql(gql(query), variables)
 
 
 def cli():
