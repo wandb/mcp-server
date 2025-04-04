@@ -5,19 +5,16 @@ Weave MCP Server - A Model Context Protocol server for querying Weave traces.
 
 import json
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-import wandb
-from wandb_gql import gql
+from mcp_server.query_models import query_paginated_wandb_gql
 
 # Import query_traces and our new utilities
 from mcp_server.query_weave import count_traces, paginated_query_traces
-from mcp_server.query_models import query_wandb_gql
 from mcp_server.report import create_report
 from mcp_server.trace_utils import DateTimeEncoder
 from mcp_server.utils import get_server_args
@@ -31,7 +28,6 @@ logger = logging.getLogger("weave-mcp-server")
 
 # Create an MCP server using FastMCP
 mcp = FastMCP("weave-mcp-server")
-
 
 
 @mcp.tool()
@@ -51,9 +47,52 @@ async def query_weave_traces_tool(
     return_full_data: bool = False,
     metadata_only: bool = False,
 ) -> str:
-    """
+    f"""
     Query Weave traces, trace metadata, and trace costs with filtering and sorting options.
 
+    <wandb_vs_weave_product_distinction>
+    **IMPORTANT PRODUCT DISTINCTION:**
+    W&B offers two distinct products with different purposes:
+    
+    1. W&B Models: A system for ML experiment tracking, hyperparameter optimization, and model 
+       lifecycle management. Use `query_wandb_gql_tool` for questions about:
+       - Experiment runs, metrics, and performance comparisons
+       - Artifact management and model registry
+       - Hyperparameter optimization and sweeps
+       - Project dashboards and reports
+    
+    2. W&B Weave: A toolkit for LLM and GenAI application observability and evaluation. Use
+       `query_weave_traces_tool` (this tool) for questions about:
+       - Execution traces and paths of LLM operations
+       - LLM inputs, outputs, and intermediate results
+       - Chain of thought visualization and debugging
+       - LLM evaluation results and feedback
+    </wandb_vs_weave_product_distinction>
+
+    <use_case_selector>
+    **USE CASE SELECTOR - READ FIRST:**
+    - For runs, metrics, experiments, artifacts, sweeps etc → use query_wandb_gql_tool
+    - For traces, LLM calls, chain-of-thought, LLM evaluations, AI agent traces, AI apps etc → use query_weave_traces_tool
+
+    =====================================================================
+    ⚠️ TOOL SELECTION WARNING ⚠️
+    This tool is ONLY for WEAVE TRACES (LLM operations), NOT for run metrics or experiments!
+    =====================================================================
+
+    **KEYWORD GUIDE:**
+    If user question contains:
+    - "runs", "experiments", "metrics" → Use query_wandb_gql_tool
+    - "traces", "LLM calls" etc → Use this tool
+
+    **COMMON MISUSE CASES:**
+    ❌ "Looking at metrics of my latest runs" - Do NOT use this tool, use query_wandb_gql_tool instead
+    ❌ "Compare performance across experiments" - Do NOT use this tool, use query_wandb_gql_tool instead
+    </use_case_selector>
+
+    If the users asks for data about "runs" or "experiments" or anything about "experiment tracking"
+    then use the `query_wandb_gql_tool` instead.
+    </use_case_selector>
+    
     <usage_tips>
     query_traces_tool can return a lot of data, below are some usage tips for this function
     in order to avoid overwhelming a LLM's context window with too much data.
@@ -245,6 +284,52 @@ async def count_weave_traces_tool(
 ) -> str:
     """Count Weave traces matching the given filters.
 
+    Use this tool to query data from Weights & Biases Weave, an observability product for 
+    tracing and evaluating LLMs and GenAI apps.
+
+    This tool only provides COUNT information about traces, not actual metrics or run data.
+
+    <tool_choice_guidance>
+    <wandb_vs_weave_product_distinction>
+    **IMPORTANT PRODUCT DISTINCTION:**
+    W&B offers two distinct products with different purposes:
+    
+    1. W&B Models: A system for ML experiment tracking, hyperparameter optimization, and model 
+       lifecycle management. Use `query_wandb_gql_tool` for questions about:
+       - Experiment runs, metrics, and performance comparisons
+       - Artifact management and model registry
+       - Hyperparameter optimization and sweeps
+       - Project dashboards and reports
+    
+    2. W&B Weave: A toolkit for LLM and GenAI application observability and evaluation. Use
+       `query_weave_traces_tool` (this tool) for questions about:
+       - Execution traces and paths of LLM operations
+       - LLM inputs, outputs, and intermediate results
+       - Chain of thought visualization and debugging
+       - LLM evaluation results and feedback
+    </wandb_vs_weave_product_distinction>
+
+    <use_case_selector>
+    **USE CASE SELECTOR - READ FIRST:**
+    - For runs, metrics, experiments, artifacts, sweeps etc → use query_wandb_gql_tool
+    - For traces, LLM calls, chain-of-thought, LLM evaluations, AI agent traces, AI apps etc → use query_weave_traces_tool
+
+    =====================================================================
+    ⚠️ TOOL SELECTION WARNING ⚠️
+    This tool is ONLY for WEAVE TRACES (LLM operations), NOT for run metrics or experiments!
+    =====================================================================
+
+    **KEYWORD GUIDE:**
+    If user question contains:
+    - "runs", "experiments", "metrics" → Use query_wandb_gql_tool
+    - "traces", "LLM calls" etc → Use this tool
+
+    **COMMON MISUSE CASES:**
+    ❌ "Looking at metrics of my latest runs" - Do NOT use this tool, use query_wandb_gql_tool instead
+    ❌ "Compare performance across experiments" - Do NOT use this tool, use query_wandb_gql_tool instead
+    </use_case_selector>
+    </tool_choice_guidance>
+    
     Returns the total number of traces in a project and the number of root
     (i.e. "parent" or top-level) traces.
 
@@ -290,6 +375,360 @@ async def count_weave_traces_tool(
     except Exception as e:
         logger.error(f"Error calling tool: {e}")
         return f"Error counting traces: {str(e)}"
+
+
+@mcp.tool()
+def query_wandb_gql_tool(
+    query: str, 
+    variables: Dict[str, Any] = None,
+    max_items: int = 100,
+    items_per_page: int = 20,
+    ) -> Dict[str, Any]:
+    """
+    Execute an arbitrary GraphQL query against the Weights & Biases (W&B) Models API.
+
+    Use this tool to query data from Weights & Biases Models features, including experiment tracking runs, 
+    model registry, reports, artifacts, sweeps. 
+
+    <wandb_vs_weave_product_distinction>
+    **IMPORTANT PRODUCT DISTINCTION:**
+    W&B offers two distinct products with different purposes:
+    
+    1. W&B Models: A system for ML experiment tracking, hyperparameter optimization, and model 
+       lifecycle management. Use `query_wandb_gql_tool` for questions about:
+       - Experiment runs, metrics, and performance comparisons
+       - Artifact management and model registry
+       - Hyperparameter optimization and sweeps
+       - Project dashboards and reports
+    
+    2. W&B Weave: A toolkit for LLM and GenAI application observability and evaluation. Use
+       `query_weave_traces_tool` (this tool) for questions about:
+       - Execution traces and paths of LLM operations
+       - LLM inputs, outputs, and intermediate results
+       - Chain of thought visualization and debugging
+       - LLM evaluation results and feedback
+    </wandb_vs_weave_product_distinction>
+
+    <use_case_selector>
+    **USE CASE SELECTOR - READ FIRST:**
+    - For runs, metrics, experiments, artifacts, sweeps etc → use query_wandb_gql_tool
+    - For traces, LLM calls, chain-of-thought, LLM evaluations, AI agent traces, AI apps etc → use query_weave_traces_tool
+
+    =====================================================================
+    ⚠️ TOOL SELECTION WARNING ⚠️
+    This tool is ONLY for WANDB MODELS DATA (MLOps), NOT for LLM TRACES or GENAI APPS!
+    =====================================================================
+
+    **KEYWORD GUIDE:**
+    If user question contains:
+    - "runs", "experiments", "metrics" → Use query_wandb_gql_tool
+    - "traces", "LLM calls" etc → Use this tool
+
+    **COMMON MISUSE CASES:**
+    ❌ "Looking at metrics of my latest runs" - Do NOT use this tool, use query_wandb_gql_tool instead
+    ❌ "Compare performance across experiments" - Do NOT use this tool, use query_wandb_gql_tool instead
+    </use_case_selector>
+
+    If the users asks for data about "runs" or "experiments" or anything about "experiment tracking"
+    then use the `query_wandb_gql_tool` instead.
+
+    If the users asks for data about "traces" or anything about "weave" then use the `query_weave_traces_tool` instead.
+    </use_case_selector>
+
+    This function allows interaction with W&B data (Projects, Runs, Artifacts, Sweeps, Reports, etc.)
+    using the GraphQL query language.
+
+    Args:
+        query (str): The GraphQL query string. This defines the operation (query/mutation),
+                     the data to fetch (selection set), and any variables used.
+        variables (Dict[str, Any], optional): A dictionary of variables to pass to the query.
+                                              Keys should match variable names defined in the query
+                                              (e.g., $entity, $project). Values should match the
+                                              expected types (String, Int, Float, Boolean, ID, JSONString).
+                                              Use `json.dumps()` for `JSONString` variables (e.g., filters).
+        max_items (int, optional): Maximum number of items to fetch across all pages (default: 100).
+        items_per_page (int, optional): Number of items to request per page (default: 20).
+
+    Returns:
+        Dict[str, Any]: The raw dictionary result from the W&B GraphQL API.
+
+    <required_pagination_structure>
+    **⚠️ REQUIRED PAGINATION STRUCTURE ⚠️**
+    
+    All collection queries MUST include the complete W&B connection pattern with these elements:
+    1. `edges` array containing nodes
+    2. `node` objects inside edges containing your data fields
+    3. `pageInfo` object with:
+       - `endCursor` field (to enable pagination)
+       - `hasNextPage` field (to determine if more data exists)
+    
+    This is a strict requirement enforced by the pagination system. Queries without this 
+    structure will fail with the error "Query doesn't follow the W&B connection pattern."
+    
+    Example of required pagination structure for any collection:
+    ```graphql
+    runs(first: 10) {  # or artifacts, files, etc.
+      edges {
+        node {
+          id
+          name
+          # ... other fields you need
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+    }
+    ```
+    </required_pagination_structure>
+    
+    <llm_context_window_management>
+    **LLM CONTEXT WINDOW MANAGEMENT**
+    
+    The results of this tool are returned to a LLM. Be mindful of the context window of the LLM!
+    
+    <warning_about_open_ended_queries>
+    **WARNING: AVOID OPEN-ENDED QUERIES!** 
+    
+    Open-ended queries should be strictly avoided when:
+    - There are a lot of runs in the project (e.g., hundreds or thousands)
+    - There are runs with large amounts of data (e.g., many metrics, large configs, etc.)
+    
+    Examples of problematic open-ended queries:
+    - Requesting all runs in a project without limits
+    - Requesting complete run histories without filtering specific metrics
+    - Requesting all files from artifacts without specifying names/types
+    
+    Instead, always:
+    - Use the `first` parameter to limit the number of items returned (start small, e.g., 5-10)
+    - Apply specific filters to narrow down results (e.g., state, creation time, metrics)
+    - Request only the specific fields needed, avoid selecting everything
+    - Consider paginating results if necessary (don't request everything at once)
+    
+    Bad:
+    ```graphql
+    query AllRuns($entity: String!, $project: String!) {
+      project(name: $project, entityName: $entity) {
+        runs { edges { node { id name state history summaryMetrics config files } } }
+      }
+    }
+    ```
+    
+    Good:
+    ```graphql
+    query LimitedRuns($entity: String!, $project: String!) {
+      project(name: $project, entityName: $entity) {
+        runs(first: 5, filters: "{\"state\":\"finished\"}") {
+          edges { node { id name createdAt } }
+        }
+      }
+    }
+    ```
+    </warning_about_open_ended_queries>
+    
+    Some tactics to consider to avoid exceeding the context window of the LLM when using this tool:
+      - First return just metadata about the wandb project or run you will be returning.
+      - Select only a subset of the data such as just particular columns or rows.
+      - If you need to return a large amount of data consider using the `query_wandb_gql_tool` in a loop
+      - Break up the query into smaller chunks.
+    
+    If you are returning just a sample subset of the data warn the user that this is a sample and that they should
+    use the tool again with additional filters to get a more complete view.
+    </llm_context_window_management>
+    
+    **Constructing GraphQL Queries:**
+
+    1.  **Operation Type:** Start with `query` for fetching data or `mutation` for modifying data.
+    2.  **Operation Name:** (Optional but recommended) A descriptive name (e.g., `ProjectInfo`).
+    3.  **Variables Definition:** Define variables used in the query with their types (e.g., `($entity: String!, $project: String!)`). `!` means required.
+    4.  **Selection Set:** Specify the fields you want to retrieve, nesting as needed based on the W&B schema.
+
+    **W&B Schema Overview:**
+
+    *   **Core Types:** `Entity`, `Project`, `Run`, `Artifact`, `Sweep`, `Report`, `User`, `Team`.
+    *   **Relationships:** Entities contain Projects. Projects contain Runs, Sweeps, Artifacts. Runs use/are used by Artifacts. Sweeps contain Runs.
+    *   **Common Fields:** `id`, `name`, `description`, `createdAt`, `config` (JSONString), `summaryMetrics` (JSONString), etc.
+    *   **Connections (Lists):** Many lists (like `project.runs`, `artifact.files`) use a connection pattern:
+        ```graphql
+        runs(first: Int, after: String, filters: JSONString) {
+          edges { node { id name ... } cursor }
+          pageInfo { hasNextPage endCursor }
+        }
+        ```
+        Use `first` for limit, `after` with `pageInfo.endCursor` for pagination, and `filters` for complex filtering.
+    *   **Field Type Handling:**
+        - Some fields require subfield selection while others don't
+        - Example for composite fields: `tags { name }` when tags have subfields
+        - Example for scalar fields: `tags` when tags are just strings
+        - Check the schema if you get errors like "must have a selection of subfields" or "must not have a selection"
+    *   **Pagination Structure:**
+        - Collections follow a specific structure: `edges → node → fields`
+        - For pagination to work, ensure `pageInfo` contains both `hasNextPage` and `endCursor`
+        - The complete pagination structure should be:
+          ```graphql
+          edges { node { fields... } cursor }
+          pageInfo { hasNextPage endCursor }
+          ```
+
+    **Query Examples:**
+
+    *   **Get Project Info:**
+        ```graphql
+        query ProjectInfo($entity: String!, $project: String!) {
+          project(name: $project, entityName: $entity) {
+            id
+            name
+            entityName
+            description
+            runCount
+          }
+        }
+        ```
+        ```python
+        variables = {"entity": "my-entity", "project": "my-project"}
+        ```
+
+        Note: This example doesn't retrieve a collection, so it doesn't need the connection pattern.
+            For any query that retrieves multiple items (runs, artifacts, etc.), you MUST use the 
+            connection pattern.
+
+    *   **Get Sorted Runs:**
+        ```graphql
+        query SortedRuns($project: String!, $entity: String!, $limit: Int, $order: String) {
+          project(name: $project, entityName: $entity) {
+            runs(first: $limit, order: $order) {
+              edges {
+               node { id name displayName state createdAt summaryMetrics }
+               cursor
+             }
+             pageInfo {
+               hasNextPage
+               endCursor
+             }
+           }
+         }
+       }
+       ```
+       ```python
+       variables = {
+           "entity": "my-entity",
+           "project": "my-project",
+           "limit": 10,
+           "order": "+summary_metrics.accuracy"  # Ascending order by accuracy
+           # Use "-created_at" for newest first (default)
+           # Use "+created_at" for oldest first
+           # Can sort by config values: "+config.batch_size"
+           # Can sort by metrics: "-summary_metrics.loss"
+       }
+       ```
+
+    *   **Get Runs with Pagination and Filtering:**
+        ```graphql
+        query FilteredRuns($project: String!, $entity: String!, $limit: Int, $cursor: String, $filters: JSONString, $order: String) {
+          project(name: $project, entityName: $entity) {
+            runs(first: $limit, after: $cursor, filters: $filters, order: $order) {
+              edges {
+                node { id name state createdAt summaryMetrics }
+                cursor
+              }
+              pageInfo { endCursor hasNextPage }
+            }
+          }
+        }
+        ```
+        ```python
+        import json
+        variables = {
+            "entity": "my-entity",
+            "project": "my-project",
+            "limit": 10,
+            "order": "-summary_metrics.accuracy",  # Optional: sort by accuracy (descending)
+            "filters": json.dumps({"state": "finished", "summary_metrics.accuracy": {"$gt": 0.9}})
+            # "cursor": previous_pageInfo_endCursor # Optional for next page
+        }
+        ```
+
+    *   **Get Run History:**
+        ```graphql
+        query RunHistory($entity: String!, $project: String!, $runName: String!, $keys: [String!]) {
+          project(name: $project, entityName: $entity) {
+            run(name: $runName) {
+              id
+              name
+              history(keys: $keys) { rows columns } # rows is list of dicts
+            }
+          }
+        }
+        ```
+        ```python
+        variables = {"entity": "my-entity", "project": "my-project", "runName": "run-abc", "keys": ["loss", "val_accuracy"]}
+        ```
+
+    *   **Get Artifact Details:**
+        ```graphql
+        query ArtifactDetails($entity: String!, $project: String!, $artifactName: String!) {
+          project(name: $project, entityName: $entity) {
+            # Assumes artifact type is implicitly known or part of the name format
+            artifact(name: $artifactName) { # Or artifactType(name:"type"){ artifact(name:"name")... }
+              id
+              digest
+              description
+              state
+              size
+              createdAt
+              metadata
+              aliases
+              files { edges { node { name url size } } }
+            }
+          }
+        }
+        ```
+        ```python
+        variables = {"entity": "my-entity", "project": "my-project", "artifactName": "my-dataset:v3"}
+        ```
+
+    *   **Create/Update Project (Mutation):**
+        ```graphql
+        mutation UpsertProject($entity: String!, $name: String!, $description: String) {
+          upsertProject(input: { entityName: $entity, name: $name, description: $description }) {
+            project { id name description }
+          }
+        }
+        ```
+        ```python
+        variables = {"entity": "my-entity", "name": "new-gql-project", "description": "Created via tool"}
+        ```
+
+    **COMMON ERRORS AND SOLUTIONS:**
+    
+    *   **Missing Connection Pattern:** If you see `"Query doesn't follow the W&B connection pattern"`, you must:
+        - Ensure ALL collection fields (runs, artifacts, files, etc.) include the proper structure:
+          - `edges` array → `node` objects → your data fields
+          - `pageInfo` object with both `hasNextPage` and `endCursor`
+        - This error usually means you forgot the `pageInfo` section or one of its required fields
+    
+    *   **No Collections Found:** If you see `"No paginated collections found in the response"`, check:
+        - You're querying a collection field (runs, files, etc.) not a scalar field
+        - Your query syntax is correct (no typos in field names)
+        - You have permission to access the requested resources
+    
+    *   **Field Selection Error:** If you see errors about field selections:
+        - "Field must not have a selection" → You've tried to select subfields on a scalar value
+        - "Field must have a selection" → You need to specify which subfields to return on an object
+
+    **Notes:**
+    *   Refer to the official W&B GraphQL schema (via introspection or documentation) for precise field names, types, and available filters.
+    *   Structure your query to request only the necessary data fields.
+    *   **Sorting:** Use the `order` parameter to sort results:
+        * Prefix with `+` for ascending order (e.g., `+created_at`)
+        * Prefix with `-` for descending order (e.g., `-created_at`)
+        * No prefix defaults to descending order
+        * Common sortable fields: `created_at`, `heartbeat_at`, `config.*`, `summary_metrics.*`
+    *   Handle potential errors in the returned dictionary (e.g., check for an 'errors' key).
+    """
+    return query_paginated_wandb_gql(query, variables, max_items, items_per_page)
+
 
 
 @mcp.tool()
@@ -362,202 +801,6 @@ async def create_wandb_report_tool(
         plots_html=plots_html,
     )
     return f"The report was saved here: {report_link}"
-
-
-@mcp.tool()
-def query_wandb_gql_tool(query: str, variables: Dict[str, Any] = None) -> Dict[str, Any]:
-    """
-    Execute an arbitrary GraphQL query against the Weights & Biases (W&B) API.
-
-    This function allows interaction with W&B data (Projects, Runs, Artifacts, Sweeps, Reports, etc.)
-    using the GraphQL query language.
-
-    Args:
-        query (str): The GraphQL query string. This defines the operation (query/mutation),
-                     the data to fetch (selection set), and any variables used.
-        variables (Dict[str, Any], optional): A dictionary of variables to pass to the query.
-                                              Keys should match variable names defined in the query
-                                              (e.g., $entity, $project). Values should match the
-                                              expected types (String, Int, Float, Boolean, ID, JSONString).
-                                              Use `json.dumps()` for `JSONString` variables (e.g., filters).
-
-    Returns:
-        Dict[str, Any]: The raw dictionary result from the W&B GraphQL API.
-
-        
-    **Context Managment**
-    
-    The results of this tool are returned to a LLM. Be mindful of the context window of the LLM!
-    
-    <warning_about_open_ended_queries>
-    **WARNING: AVOID OPEN-ENDED QUERIES!** 
-    
-    Open-ended queries should be strictly avoided when:
-    - There are a lot of runs in the project (e.g., hundreds or thousands)
-    - There are runs with large amounts of data (e.g., many metrics, large configs, etc.)
-    
-    Examples of problematic open-ended queries:
-    - Requesting all runs in a project without limits
-    - Requesting complete run histories without filtering specific metrics
-    - Requesting all files from artifacts without specifying names/types
-    
-    Instead, always:
-    - Use the `first` parameter to limit the number of items returned (start small, e.g., 5-10)
-    - Apply specific filters to narrow down results (e.g., state, creation time, metrics)
-    - Request only the specific fields needed, avoid selecting everything
-    - Consider paginating results if necessary (don't request everything at once)
-    
-    Bad:
-    ```graphql
-    query AllRuns($entity: String!, $project: String!) {
-      project(name: $project, entityName: $entity) {
-        runs { edges { node { id name state history summaryMetrics config files } } }
-      }
-    }
-    ```
-    
-    Good:
-    ```graphql
-    query LimitedRuns($entity: String!, $project: String!) {
-      project(name: $project, entityName: $entity) {
-        runs(first: 5, filters: "{\"state\":\"finished\"}") {
-          edges { node { id name createdAt } }
-        }
-      }
-    }
-    ```
-    </warning_about_open_ended_queries>
-    
-    Some tactics to consider to avoid exceeding the context window of the LLM when using this tool:
-      - First return just metadata about the wandb project or run you will be returning.
-      - Select only a subset of the data such as just particular columns or rows.
-      - If you need to return a large amount of data consider using the `query_wandb_gql_tool` in a loop
-      - Break up the query into smaller chunks.
-    
-    If you are returning just a sample subset of the data warn the user that this is a sample and that they should
-    use the tool again with additional filters to get a more complete view.
-
-    **Constructing GraphQL Queries:**
-
-    1.  **Operation Type:** Start with `query` for fetching data or `mutation` for modifying data.
-    2.  **Operation Name:** (Optional but recommended) A descriptive name (e.g., `ProjectInfo`).
-    3.  **Variables Definition:** Define variables used in the query with their types (e.g., `($entity: String!, $project: String!)`). `!` means required.
-    4.  **Selection Set:** Specify the fields you want to retrieve, nesting as needed based on the W&B schema.
-
-    **W&B Schema Overview:**
-
-    *   **Core Types:** `Entity`, `Project`, `Run`, `Artifact`, `Sweep`, `Report`, `User`, `Team`.
-    *   **Relationships:** Entities contain Projects. Projects contain Runs, Sweeps, Artifacts. Runs use/are used by Artifacts. Sweeps contain Runs.
-    *   **Common Fields:** `id`, `name`, `description`, `createdAt`, `config` (JSONString), `summaryMetrics` (JSONString), etc.
-    *   **Connections (Lists):** Many lists (like `project.runs`, `artifact.files`) use a connection pattern:
-        ```graphql
-        runs(first: Int, after: String, filters: JSONString) {
-          edges { node { id name ... } cursor }
-          pageInfo { hasNextPage endCursor }
-        }
-        ```
-        Use `first` for limit, `after` with `pageInfo.endCursor` for pagination, and `filters` for complex filtering.
-
-    **Query Examples:**
-
-    *   **Get Project Info:**
-        ```graphql
-        query ProjectInfo($entity: String!, $project: String!) {
-          project(name: $project, entityName: $entity) {
-            id
-            name
-            entityName
-            description
-            runCount
-          }
-        }
-        ```
-        ```python
-        variables = {"entity": "my-entity", "project": "my-project"}
-        ```
-
-    *   **Get Runs with Pagination and Filtering:**
-        ```graphql
-        query FilteredRuns($project: String!, $entity: String!, $limit: Int, $cursor: String, $filters: JSONString) {
-          project(name: $project, entityName: $entity) {
-            runs(first: $limit, after: $cursor, filters: $filters) {
-              edges {
-                node { id name state createdAt summaryMetrics }
-                cursor
-              }
-              pageInfo { endCursor hasNextPage }
-            }
-          }
-        }
-        ```
-        ```python
-        import json
-        variables = {
-            "entity": "my-entity",
-            "project": "my-project",
-            "limit": 10,
-            "filters": json.dumps({"state": "finished", "summary_metrics.accuracy": {"$gt": 0.9}})
-            # "cursor": previous_pageInfo_endCursor # Optional for next page
-        }
-        ```
-
-    *   **Get Run History:**
-        ```graphql
-        query RunHistory($entity: String!, $project: String!, $runName: String!, $keys: [String!]) {
-          project(name: $project, entityName: $entity) {
-            run(name: $runName) {
-              id
-              name
-              history(keys: $keys) { rows columns } # rows is list of dicts
-            }
-          }
-        }
-        ```
-        ```python
-        variables = {"entity": "my-entity", "project": "my-project", "runName": "run-abc", "keys": ["loss", "val_accuracy"]}
-        ```
-
-    *   **Get Artifact Details:**
-        ```graphql
-        query ArtifactDetails($entity: String!, $project: String!, $artifactName: String!) {
-          project(name: $project, entityName: $entity) {
-            # Assumes artifact type is implicitly known or part of the name format
-            artifact(name: $artifactName) { # Or artifactType(name:"type"){ artifact(name:"name")... }
-              id
-              digest
-              description
-              state
-              size
-              createdAt
-              metadata
-              aliases
-              files { edges { node { name url size } } }
-            }
-          }
-        }
-        ```
-        ```python
-        variables = {"entity": "my-entity", "project": "my-project", "artifactName": "my-dataset:v3"}
-        ```
-
-    *   **Create/Update Project (Mutation):**
-        ```graphql
-        mutation UpsertProject($entity: String!, $name: String!, $description: String) {
-          upsertProject(input: { entityName: $entity, name: $name, description: $description }) {
-            project { id name description }
-          }
-        }
-        ```
-        ```python
-        variables = {"entity": "my-entity", "name": "new-gql-project", "description": "Created via tool"}
-        ```
-
-    **Notes:**
-    *   Refer to the official W&B GraphQL schema (via introspection or documentation) for precise field names, types, and available filters.
-    *   Structure your query to request only the necessary data fields.
-    *   Handle potential errors in the returned dictionary (e.g., check for an 'errors' key).
-    """
-    return query_wandb_gql(gql(query), variables)
 
 
 def cli():
