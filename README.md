@@ -22,6 +22,10 @@ A Model Context Protocol (MCP) server for querying [Weights & Biases Weave](http
 - **`create_wandb_report_tool`**: Creates a new W&B Report with markdown text and HTML-rendered visualizations.
   Provides a permanent, shareable document for saving analysis findings and generated charts.
 
+## Usage Tips
+
+- When asking broad, general questions such as "what are my best performing runs/evaluations?" its always a good idea to ask the LLM to check that it retrieved all the available runs. Sometimes there can be a tendency from the LLMs to only retrieve the latest runs or the last X runs.
+
 ## Usage
 
 Ensure you specify the W&B Entity and W&B Project to the LLM/MCP Client.
