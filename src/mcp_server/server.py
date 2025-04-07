@@ -855,9 +855,28 @@ def query_wandb_entity_projects(entity: str) -> List[Dict[str, Any]]:
     the user hasn't specified a project name or queries are failing due to a 
     missing or incorrect Weights & Biases project name.
 
+    <critical_info>
+    
+    **Important:**
+    
+    Do not use this tool if the user has not specified a W&BB entity name. Instead ask
+    the user to provide either their W&B username or W&B team name.
+    </critical_info>
+
+    <debugging_tips>
+    
+    **Error Handling:**
+
+    If this function throws an error, it's likely because the W&B entity name is incorrect.
+    If this is the case, ask the user to double check the W&B entity name given by the user, 
+    either their personal user or their W&B Team name.
+
+    **Expected Project Name Not Found:**
+    
     If the user doesn't see the project they're looking for in the list of projects,
-    ask them to double check the W&B entity name, either their personal user or their 
+    ask them to double check the W&B entity name, either their personal W&B username or their 
     W&B Team name.
+    </debugging_tips>
     
     Args:
         entity (str): The wandb entity (username or team name)
