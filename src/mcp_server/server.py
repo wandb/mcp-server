@@ -854,6 +854,10 @@ def query_wandb_entity_projects(entity: str) -> List[Dict[str, Any]]:
     Fetch all projects for a specific wandb or weave entity. Useful to use when 
     the user hasn't specified a project name or queries are failing due to a 
     missing or incorrect Weights & Biases project name.
+
+    If the user doesn't see the project they're looking for in the list of projects,
+    ask them to double check the W&B entity name, either their personal user or their 
+    W&B Team name.
     
     Args:
         entity (str): The wandb entity (username or team name)
