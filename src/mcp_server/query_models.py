@@ -356,7 +356,7 @@ def get_nested_value(obj: Dict, path: list[str]) -> Optional[Any]:
     return current
 
 
-def query_wandb_projects(entity: str) -> List[Dict[str, Any]]:
+def get_entity_projects(entity: str) -> List[Dict[str, Any]]:
     """
     Fetch all projects for a specific wandb entity.
 
