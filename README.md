@@ -68,7 +68,7 @@ Example query for Claude Desktop:
 how many openai.chat traces in the wandb-applied-ai-team/mcp-tests weave project? plot the most recent 5 traces over time and save to a report
 ```
 
-## Installation
+## Running from Source
 
 ```bash
 git clone https://github.com/wandb/mcp-server.git
