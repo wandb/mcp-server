@@ -5,6 +5,38 @@ A Model Context Protocol (MCP) server for querying [Weights & Biases Weave](http
 - query W&B Weave traces
 - write text and charts to W&B Reports
 
+## Installation
+We provide a helper utility for easily installing the Weights and Biases MCP Server into applications that use a JSON server spec. Please first (install `uv`)[https://docs.astral.sh/uv/getting-started/installation/], typically by running `curl -LsSf https://astral.sh/uv/install.sh | sh` on your machine.
+
+From there, you can use the `add_to_client` helper to add the server to your MCP client - inspired by the OpenMCP Server Registry (`add-to-client` pattern)[https://www.open-mcp.org/servers]
+
+### Cursor project (run from the project dir):
+`uvx --from git+https://github.com/wandb/mcp-server add_to_client .cursor/mcp.json && uvx wandb login`
+
+### Cursor global (applies to all projects):
+`uvx --from git+https://github.com/wandb/mcp-server add_to_client ~/.cursor/mcp.json && uvx wandb login`
+
+### Claude desktop:
+`uvx --from git+https://github.com/wandb/mcp-server add_to_client ~/Library/Application\ Support/Claude/claude_desktop_config.json && uvx wandb login`
+
+### Manually
+If you don't want to use the helper above, add the following to your MCP client config manually:
+
+```
+{
+  "mcpServers": {
+    "wandb": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/wandb/mcp-server",
+        "mcp_server"
+      ]
+    }
+  }
+}
+```
+
 ## Available tools
 
 
