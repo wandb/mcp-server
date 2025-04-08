@@ -76,14 +76,14 @@ cd mcp-server && uv venv && source .venv/bin/activate
 uv pip install -e .
 ```
 
-## Configuration
+### Configuration
 
 1. Create a `.env` file in the root directory with your Weights & Biases API key:
 ```
 WANDB_API_KEY=your_api_key_here
 ```
 
-## Running the Server
+### Running the Server
 
 Run the server using:
 
@@ -91,9 +91,9 @@ Run the server using:
 uv run src/mcp_server/server.py
 ```
 
-## Client Setup
+### Client Setup
 
-### Claude Desktop
+#### Claude Desktop
 
 ```json
     "mcpServers": {
