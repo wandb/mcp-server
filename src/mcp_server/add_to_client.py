@@ -2,10 +2,10 @@ import os
 import json
 import sys
 
-new_config = {"wandb": {
+new_config = {"mcpServers": {"wandb": {
     "command": "uvx",
     "args": ["--from", "git+https://github.com/wandb/mcp-server@tim/cursor_integration", "mcp_server"],
-}}
+}}}
 
 def add_to_client(pathname: str | None = None, api_key: str | None = None) -> None:
     """
