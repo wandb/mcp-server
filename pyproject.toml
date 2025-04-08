@@ -21,6 +21,7 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 mcp_server = "mcp_server:cli"
+add_to_client = "add_to_client:cli"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mcp_server"]
+packages = ["src/mcp_server", "src/add_to_client"]
