@@ -69,7 +69,7 @@ def add_to_client(pathname: str | None = None, api_key: str | None = None) -> No
         json.dump(config, f, indent=2)
     print(f"Successfully updated config at {config_path}")
 
-def cli():
+def add_to_client_cli():
     if len(sys.argv) > 1:
         add_to_client(sys.argv[1])
     else:
@@ -77,4 +77,4 @@ def cli():
         sys.exit(1)
 
 if __name__ == "__main__":
-    cli()
+    add_to_client_cli()
