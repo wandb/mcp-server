@@ -896,7 +896,7 @@ def query_wandb_entity_projects(entity: Optional[str] = None) -> List[Dict[str, 
 
 
 @mcp.tool()
-def query_support_bot(question: str) -> str:
+def query_wandb_support_bot(question: str) -> str:
     """
     Query the Weights & Biases support bot api for help with questions about the
     Weights & Biases platform and how to use W&B Models and W&B Weave.
