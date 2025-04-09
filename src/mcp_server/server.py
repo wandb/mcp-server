@@ -18,9 +18,6 @@ from mcp_server.report import create_report
 from mcp_server.trace_utils import DateTimeEncoder
 from mcp_server.utils import get_server_args
 
-# Load environment variables
-load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("weave-mcp-server")

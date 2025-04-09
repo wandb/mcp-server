@@ -1,8 +1,14 @@
+import os
+
 import requests
+from dotenv import load_dotenv
+from pathlib import Path
+
+load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
 
 
 def query_support_bot_api(question):
-    BASE_URL = "http://wandbot1.replit.app"
+    BASE_URL = os.getenv("WANDBOT_BASE_URL")
     QUERY_ENDPOINT = f"{BASE_URL}/chat/query"
     STATUS_ENDPOINT = f"{BASE_URL}/status"
     QUERY_TIMEOUT_SECONDS = 40
