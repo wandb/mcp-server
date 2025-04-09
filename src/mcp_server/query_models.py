@@ -356,15 +356,18 @@ def get_nested_value(obj: Dict, path: list[str]) -> Optional[Any]:
     return current
 
 
-def get_entity_projects(entity: str) -> List[Dict[str, Any]]:
+def list_entity_projects(entity: str = None) -> List[Dict[str, Any]]:
     """
-    Fetch all projects for a specific wandb entity.
+    Fetch all projects for a specific wandb entity. If no entity is provided, 
+    fetches projects for the current user and their teams.
 
     Args:
-        entity (str): The wandb entity (username or team name)
+        entity (str, optional): The wandb entity (username or team name). If None, 
+                               fetches projects for the current user and their teams.
 
     Returns:
-        List[Dict[str, Any]]: List of project dictionaries containing:
+        Dict[str, List[Dict[str, Any]]]: Dictionary mapping entity names to lists of project dictionaries.
+            Each project dictionary contains:
             - name: Project name
             - entity: Entity name
             - description: Project description
@@ -376,24 +379,36 @@ def get_entity_projects(entity: str) -> List[Dict[str, Any]]:
     # Initialize wandb API
     api = wandb.Api()
 
+    # Merge entity and teams into a single list
+    if entity is None:
+        viewer = api.viewer
+        entities = [viewer.entity] + viewer.teams
+    else:
+        entities = [entity]
+
     # Get all projects for the entity
-    projects = api.projects(entity)
 
-    # Convert projects to a list of dictionaries
-    projects_data = []
-    for project in projects:
-        project_dict = {
-            "name": project.name,
-            "entity": project.entity,
-            "description": project.description,
-            "visibility": project.visibility,
-            "created_at": project.created_at,
-            "updated_at": project.updated_at,
-            "tags": project.tags,
-        }
-        projects_data.append(project_dict)
+    entities_projects = {}
+    for entity in entities:
+        projects = api.projects(entity)
+        
+        # Convert projects to a list of dictionaries
+        projects_data = []
+        for project in projects:
+            project_dict = {
+                "name": project.name,
+                "entity": project.entity,
+                "description": project.description,
+                "visibility": project.visibility,
+                "created_at": project.created_at,
+                "updated_at": project.updated_at,
+                "tags": project.tags,
+            }
+            projects_data.append(project_dict)
 
-    return projects_data
+        entities_projects[entity] = projects_data
+
+    return entities_projects
 
 
 def query_wandb_runs(
