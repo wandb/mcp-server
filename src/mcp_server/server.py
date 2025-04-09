@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Union
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-from mcp_server.query_models import query_paginated_wandb_gql, get_entity_projects
+from mcp_server.query_models import query_paginated_wandb_gql, list_entity_projects
 
 # Import query_traces and our new utilities
 from mcp_server.query_weave import count_traces, paginated_query_traces
@@ -849,11 +849,14 @@ async def create_wandb_report_tool(
 
 
 @mcp.tool()
-def query_wandb_entity_projects(entity: str) -> List[Dict[str, Any]]:
+def query_wandb_entity_projects(entity: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Fetch all projects for a specific wandb or weave entity. Useful to use when 
     the user hasn't specified a project name or queries are failing due to a 
     missing or incorrect Weights & Biases project name.
+
+    If no entity is provided, the tool will fetch all projects for the current user 
+    as well as all the project in the teams they are part of.
 
     <critical_info>
     
@@ -872,7 +875,7 @@ def query_wandb_entity_projects(entity: str) -> List[Dict[str, Any]]:
     either their personal user or their W&B Team name.
 
     **Expected Project Name Not Found:**
-    
+
     If the user doesn't see the project they're looking for in the list of projects,
     ask them to double check the W&B entity name, either their personal W&B username or their 
     W&B Team name.
@@ -891,7 +894,7 @@ def query_wandb_entity_projects(entity: str) -> List[Dict[str, Any]]:
             - updated_at: Last update timestamp
             - tags: List of project tags
     """
-    return get_entity_projects(entity)
+    return list_entity_projects(entity)
 
 
 def cli():
