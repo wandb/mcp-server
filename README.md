@@ -2,7 +2,8 @@
 
 A Model Context Protocol (MCP) server for querying [Weights & Biases Weave](https://weave-docs.wandb.ai/) traces. This server allows a MCP Client to:
 
-- query W&B Weave traces
+- query W&B Models runs, sweeps, artifacts and registry
+- query W&B Weave traces, evaluations and datasets
 - write text and charts to W&B Reports
 
 ## Available tools
