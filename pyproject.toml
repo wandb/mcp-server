@@ -1,5 +1,5 @@
 [project]
-name = "mcp_server"
+name = "wandb_mcp_server"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,6 +12,7 @@ dependencies = [
     "tiktoken>=0.9.0",
     "wandb>=0.19.8",
     "wandb-workspaces>=0.1.12",
+    "wandbot>=1.3.1",
     "networkx>=3.4.2",
 ]
 
