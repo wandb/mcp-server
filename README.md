@@ -56,7 +56,7 @@ WANDB_API_KEY=your_api_key_here
 Run the server using:
 
 ```bash
-uv run src/mcp_server/server.py
+uv run src/wandb_mcp_server/server.py
 ```
 
 ## Client Setup
@@ -71,7 +71,7 @@ uv run src/mcp_server/server.py
             "--directory",
             "/ABSOLUTE/PATH/TO/PROJECT",
             "run",
-            "src/mcp_server/server.py"
+            "src/wandb_mcp_server/server.py"
         ]
         }
     }

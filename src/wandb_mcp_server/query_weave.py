@@ -20,7 +20,7 @@ from weave.trace_server.interface.query import (
 
 import wandb
 import weave
-from mcp_server.trace_utils import process_traces
+from wandb_mcp_server.trace_utils import process_traces
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def get_args():
     This function avoids circular imports by importing server module only when needed.
     """
     # Import here to avoid circular imports
-    from mcp_server.server import get_server_args
+    from wandb_mcp_server.server import get_server_args
 
     return get_server_args()
 

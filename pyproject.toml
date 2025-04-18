@@ -21,7 +21,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-mcp_server = "mcp_server:main"
+wandb_mcp_server = "wandb_mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mcp_server"]
+packages = ["src/wandb_mcp_server"]
