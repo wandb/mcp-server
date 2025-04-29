@@ -113,26 +113,26 @@ logger.info("Baseline runCount = %s", BASELINE_RUN_COUNT)
 # -----------------------------------------------------------------------------
 
 test_queries = [
-    # {
-    #     "question": "How many runs are currently logged in the `{project_name}` project under the `{entity_name}` entity?",
-    #     "expected_output": 37,
-    # },
-    # {
-    #     "question": "What's the total experiment count for `{entity_name}/{project_name}`?",
-    #     "expected_output": 37,
-    # },
-    # {
-    #     "question": "In `{project_name}` in entity `{entity_name}` how many runs were run on April 29th 2025?",
-    #     "expected_output": 37,
-    # },
-    # {
-    #     "question": "Could you report the number of tracked runs in `{entity_name}/{project_name}` with learning rate 0.002?",
-    #     "expected_output": 7,
-    # },
-    # {
-    #     "question": "what was the run with the best eval loss in the `{project_name}` project belonging to `{entity_name}`.",
-    #     "expected_output": "run_id: h0fm5qp5 OR run_name: transformer_7_bs-128_lr-0.008_5593616",
-    # },
+    {
+        "question": "How many runs are currently logged in the `{project_name}` project under the `{entity_name}` entity?",
+        "expected_output": 37,
+    },
+    {
+        "question": "What's the total experiment count for `{entity_name}/{project_name}`?",
+        "expected_output": 37,
+    },
+    {
+        "question": "In `{project_name}` in entity `{entity_name}` how many runs were run on April 29th 2025?",
+        "expected_output": 37,
+    },
+    {
+        "question": "Could you report the number of tracked runs in `{entity_name}/{project_name}` with lr 0.002?",
+        "expected_output": 7,
+    },
+    {
+        "question": "what was the run with the best eval loss in the `{project_name}` project belonging to `{entity_name}`.",
+        "expected_output": "run_id: h0fm5qp5 OR run_name: transformer_7_bs-128_lr-0.008_5593616",
+    },
     {
         "question": "How many steps in run gtng2y4l `{entity_name}/{project_name}` right now.",
         "expected_output": 750000,
@@ -141,10 +141,10 @@ test_queries = [
         "question": "How many steps in run transformer_25_bs-33554432_lr-0.026000000000000002_2377215 `{entity_name}/{project_name}` right now.",
         "expected_output": 750000,
     },
-    # {
-    #     "question": "What's the batch size of the run with best evaluation accuracy for `{project_name}` inside `{entity_name}`?",
-    #     "expected_output": BASELINE_RUN_COUNT,
-    # },
+    {
+        "question": "What's the batch size of the run with best evaluation accuracy for `{project_name}` inside `{entity_name}`?",
+        "expected_output": 16,
+    },
     # {
     #     "question": "Count the runs in my `{entity_name}` entity for the `{project_name}` project.",
     #     "expected_output": BASELINE_RUN_COUNT,

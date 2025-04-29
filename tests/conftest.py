@@ -12,7 +12,7 @@ os.environ["WANDB_SILENT"] = "true"
 @pytest.fixture(scope="session", autouse=True)
 def setup_weave(request):
     """Initializes Weave once per test session."""
-    project_name = "wandb-applied-ai-team/wandb-mcp-server-test-outputs"
+    project_name = "wandb-applied-ai-team/wandb-mcp-server-test-suite-outputs"
     logger.info(f"Initializing Weave for project: {project_name}")
     try:
         # Attempt initialization
