@@ -1,7 +1,6 @@
 import logging
 import os
 
-import anthropic
 import pytest
 from rich.logging import RichHandler
 
@@ -10,6 +9,10 @@ from wandb_mcp_server.tools.count_traces import (
     count_traces,
 )
 from wandb_mcp_server.tools.tools_utils import generate_anthropic_tool_schema
+from tests.anthropic_test_utils import (
+    call_anthropic,
+    extract_anthropic_tool_use
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +40,6 @@ if not ANTHROPIC_API_KEY:
         "ANTHROPIC_API_KEY environment variable not set; skipping live Anthropic tests.",
         allow_module_level=True,
     )
-
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 TEST_WANDB_ENTITY = "wandb-applied-ai-team"  # "c-metrics"
 TEST_WANDB_PROJECT = "mcp-tests"  # "hallucination"
@@ -104,40 +105,6 @@ test_queries = [
 ]
 
 # Force claude to use a tool: tool_choice = {"type": "tool", "name": "get_weather"}
-
-
-def call_anthropic(model_name, messages, tools):
-    response = client.messages.create(
-        model=model_name, max_tokens=4000, tools=tools, messages=messages
-    )
-    return response
-
-
-def extract_anthropic_tool_use(response) -> tuple:
-    tool_use = None
-    for idx, content in enumerate(response.content):
-        logger.debug(f"Response content {idx}: {content}")
-        if content.type == "tool_use":
-            tool_use = content
-            break
-
-    if tool_use:
-        tool_name = tool_use.name
-        tool_input = tool_use.input
-        tool_id = tool_use.id
-
-        return tool_use, tool_name, tool_input, tool_id
-    else:
-        return None, None, None, None
-
-
-def get_anthropic_tool_result_message(tool_result, tool_id) -> dict:
-    return {
-        "role": "user",
-        "content": [
-            {"type": "tool_result", "tool_use_id": tool_id, "content": str(tool_result)}
-        ],
-    }
 
 
 # -----------------------

@@ -30,8 +30,22 @@ wandb_mcp_server = "wandb_mcp_server:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/wandb_mcp_server"]
 
-[pytest]
+[tool.pytest.ini_options]
 log_cli = true
 log_cli_level = "INFO"  # or "DEBUG"
 log_cli_format = "%(levelname)s %(message)s"
 log_cli_date_format = "%H:%M:%S"
+filterwarnings = [
+    # Ignore Sentry Hub deprecation from weave
+    'ignore:::weave\.trace\.trace_sentry',
+    # Ignore Pydantic Field 'include' deprecations
+    'ignore:Using extra keyword arguments on \`Field\`:pydantic.warnings.PydanticDeprecatedSince20',
+    'ignore:\`include\` is deprecated and does nothing:pydantic.warnings.PydanticDeprecatedSince20',
+    # Ignore Pydantic V1 validator deprecations from wandb_workspaces
+    'ignore:Pydantic V1 style .* validators are deprecated:pydantic.warnings.PydanticDeprecatedSince20:wandb_workspaces\.reports\.v2',
+    # Ignore Weave DeprecationWarning
+    'ignore:deprecated:DeprecationWarning:weave\.trace_server\.trace_server_interface',
+    # Ignore Pydantic __fields__ / __fields_set__ deprecations from weave
+    'ignore:The \`__fields__\` attribute is deprecated:pydantic.warnings.PydanticDeprecatedSince20:weave\.trace\.object_record',
+    'ignore:The \`__fields_set__\` attribute is deprecated:pydantic.warnings.PydanticDeprecatedSince20:weave\.trace\.object_record',
+]

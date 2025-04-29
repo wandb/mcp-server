@@ -12,14 +12,14 @@ from typing import Any, Dict, List, Optional, Union
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-from wandb_mcp_server.query_models import list_entity_projects, query_paginated_wandb_gql
+from wandb_mcp_server.query_models import list_entity_projects
 from wandb_mcp_server.query_weave import  paginated_query_traces
 from wandb_mcp_server.tools.count_traces import count_traces, COUNT_WEAVE_TRACES_TOOL_DESCRIPTION
+from wandb_mcp_server.tools.query_wandb_gql import query_paginated_wandb_gql, QUERY_WANDB_GQL_TOOL_DESCRIPTION
 from wandb_mcp_server.report import create_report
 from wandb_mcp_server.tool_prompts import (
     CREATE_WANDB_REPORT_TOOL_DESCRIPTION,
     LIST_ENTITY_PROJECTS_TOOL_DESCRIPTION,
-    QUERY_WANDB_GQL_TOOL_DESCRIPTION,
     QUERY_WEAVE_TRACES_TOOL_DESCRIPTION
 )
 from wandb_mcp_server.query_wandbot import query_wandbot_api, WANDBOT_TOOL_DESCRIPTION
