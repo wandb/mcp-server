@@ -109,3 +109,15 @@ This indicates that the `uv` package manager cannot be found. Fix this with thes
 3. Restart your application or IDE after making these changes.
 
 This ensures that the `uv` executable is accessible from standard system paths that are typically included in the PATH for all processes.
+
+## Testing
+
+Set the appropriate api key in the `.env` file, e.g.
+
+```
+ANTHROPIC_API_KEY=<my_key>
+```
+
+```
+ uv run pytest -n 10 tests/test_count_tools.py
+```

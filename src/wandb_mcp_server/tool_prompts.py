@@ -187,7 +187,6 @@ Args:
     sort_by: Field to sort by (started_at, ended_at, op_name, etc.). Defaults to 'started_at'
     sort_direction: Sort direction ('asc' or 'desc'). Defaults to 'desc'
     limit: Maximum number of results to return. Defaults to None
-    offset: Number of results to skip (for pagination). Defaults to 0
     include_costs: Include tracked api cost information in the results. Defaults to True
     include_feedback: Include weave annotations (human labels/feedback). Defaults to True
     columns: List of specific columns to include in the results. Its almost always a good idea to specficy the
@@ -248,77 +247,7 @@ Returns:
 </examples>
 """
 
-COUNT_WEAVE_TRACES_TOOL_DESCRIPTION = """count Weave traces matching the given filters.
 
-Use this tool to query data from Weights & Biases Weave, an observability product for 
-tracing and evaluating LLMs and GenAI apps.
-
-This tool only provides COUNT information about traces, not actual metrics or run data.
-
-<tool_choice_guidance>
-<wandb_vs_weave_product_distinction>
-**IMPORTANT PRODUCT DISTINCTION:**
-W&B offers two distinct products with different purposes:
-
-1. W&B Models: A system for ML experiment tracking, hyperparameter optimization, and model 
-    lifecycle management. Use `query_wandb_gql_tool` for questions about:
-    - Experiment runs, metrics, and performance comparisons
-    - Artifact management and model registry
-    - Hyperparameter optimization and sweeps
-    - Project dashboards and reports
-
-2. W&B Weave: A toolkit for LLM and GenAI application observability and evaluation. Use
-    `query_weave_traces_tool` (this tool) for questions about:
-    - Execution traces and paths of LLM operations
-    - LLM inputs, outputs, and intermediate results
-    - Chain of thought visualization and debugging
-    - LLM evaluation results and feedback
-</wandb_vs_weave_product_distinction>
-
-<use_case_selector>
-**USE CASE SELECTOR - READ FIRST:**
-- For runs, metrics, experiments, artifacts, sweeps etc → use query_wandb_gql_tool
-- For traces, LLM calls, chain-of-thought, LLM evaluations, AI agent traces, AI apps etc → use query_weave_traces_tool
-
-=====================================================================
-⚠️ TOOL SELECTION WARNING ⚠️
-This tool is ONLY for WEAVE TRACES (LLM operations), NOT for run metrics or experiments!
-=====================================================================
-
-**KEYWORD GUIDE:**
-If user question contains:
-- "runs", "experiments", "metrics" → Use query_wandb_gql_tool
-- "traces", "LLM calls" etc → Use this tool
-
-**COMMON MISUSE CASES:**
-❌ "Looking at metrics of my latest runs" - Do NOT use this tool, use query_wandb_gql_tool instead
-❌ "Compare performance across experiments" - Do NOT use this tool, use query_wandb_gql_tool instead
-</use_case_selector>
-</tool_choice_guidance>
-
-Returns the total number of traces in a project and the number of root
-(i.e. "parent" or top-level) traces.
-
-This is more efficient than query_trace_tool when you only need the count.
-This can be useful to understand how many traces are in a project before
-querying for them as query_trace_tool can return a lot of data.
-
-Args:
-    entity_name: The Weights & Biases entity name (team or username)
-    project_name: The Weights & Biases project name
-    filters: Dict of filter conditions, supporting:
-        - display_name: Filter by display name seen in the Weave UI (string or regex pattern)
-        - op_name: Filter by weave op name, a long URI starting with 'weave:///' (string or regex pattern)
-        - op_name_contains: Filter for op_name containing this substring (easier than regex)
-        - trace_id: Filter by specific trace ID
-        - status: Filter by trace status (success, error, etc.)
-        - time_range: Dict with "start" and "end" datetime strings
-        - attributes: Dict of attribute path and value to match
-        - has_exception: Boolean to filter traces with/without exceptions
-
-Returns:
-    JSON string containing the count of matching traces
-"""
 
 QUERY_WANDB_GQL_TOOL_DESCRIPTION = """Execute an arbitrary GraphQL query against the Weights & Biases (W&B) Models API.
 

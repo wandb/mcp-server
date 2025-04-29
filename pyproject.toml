@@ -5,15 +5,19 @@ requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",
     "mcp[cli]>=1.3.0",
-    "weave>=0.51.36",
+    "weave>=0.51.43",
     "simple-parsing>=0.1.7",
     "pytest>=8.3.1",
     "python-dotenv>=1.0.0",
     "tiktoken>=0.9.0",
     "wandb>=0.19.8",
     "wandb-workspaces>=0.1.12",
-    "wandbot>=1.3.1",
+    "wandbot>=1.3.2",
     "networkx>=3.4.2",
+    "ipykernel>=6.29.5",
+    "litellm>=1.67.2",
+    "anthropic>=0.50.0",
+    "pytest-xdist>=3.6.1",
 ]
 
 [build-system]
@@ -25,3 +29,9 @@ wandb_mcp_server = "wandb_mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wandb_mcp_server"]
+
+[pytest]
+log_cli = true
+log_cli_level = "INFO"  # or "DEBUG"
+log_cli_format = "%(levelname)s %(message)s"
+log_cli_date_format = "%H:%M:%S"

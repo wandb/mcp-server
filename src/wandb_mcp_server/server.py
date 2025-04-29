@@ -13,12 +13,10 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
 from wandb_mcp_server.query_models import list_entity_projects, query_paginated_wandb_gql
-
-# Import query_traces and our new utilities
-from wandb_mcp_server.query_weave import count_traces, paginated_query_traces
+from wandb_mcp_server.query_weave import  paginated_query_traces
+from wandb_mcp_server.tools.count_traces import count_traces, COUNT_WEAVE_TRACES_TOOL_DESCRIPTION
 from wandb_mcp_server.report import create_report
 from wandb_mcp_server.tool_prompts import (
-    COUNT_WEAVE_TRACES_TOOL_DESCRIPTION,
     CREATE_WANDB_REPORT_TOOL_DESCRIPTION,
     LIST_ENTITY_PROJECTS_TOOL_DESCRIPTION,
     QUERY_WANDB_GQL_TOOL_DESCRIPTION,
@@ -47,7 +45,6 @@ async def query_weave_traces_tool(
     sort_by: str = "started_at",
     sort_direction: str = "desc",
     limit: int = None,
-    offset: int = 0,
     include_costs: bool = True,
     include_feedback: bool = True,
     columns: Optional[List[str]] = None,
@@ -65,8 +62,7 @@ async def query_weave_traces_tool(
             filters=filters,
             sort_by=sort_by,
             sort_direction=sort_direction,
-            limit=limit,
-            offset=offset,
+            target_limit=limit,
             include_costs=include_costs,
             include_feedback=include_feedback,
             columns=columns,
