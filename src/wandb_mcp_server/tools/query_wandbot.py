@@ -1,4 +1,5 @@
 import requests
+import os
 from typing import Any, Dict
 
 # from wandbot.wandbot_tool import query_wandbot_api, WANDBOT_TOOL_DESCRIPTION
@@ -27,7 +28,8 @@ str
     newer to the user's question
 """
 
-def query_wandbot_api(question: str, wandbot_base_url: str) -> Dict[str, Any]:
+def query_wandbot_api(question: str) -> Dict[str, Any]:
+    wandbot_base_url = os.getenv("WANDBOT_BASE_URL", "https://wandbot.replit.app")
     QUERY_ENDPOINT = f"{wandbot_base_url}/chat/query"
     STATUS_ENDPOINT = f"{wandbot_base_url}/status"
     QUERY_TIMEOUT_SECONDS = 40
@@ -90,7 +92,9 @@ def query_wandbot_api(question: str, wandbot_base_url: str) -> Dict[str, Any]:
                         "sources": [],
                     }
 
-                return {"answer": result["answer"], "sources": result["sources"]}
+                # Ensure sources is a list
+                sources = result["sources"] if isinstance(result["sources"], list) else [result["sources"]]
+                return {"answer": result["answer"], "sources": sources}
 
             except requests.Timeout:
                 return {
