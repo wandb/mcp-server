@@ -1,18 +1,23 @@
 [project]
-name = "mcp_server"
+name = "wandb_mcp_server"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",
     "mcp[cli]>=1.3.0",
-    "weave>=0.51.36",
+    "weave>=0.51.43",
     "simple-parsing>=0.1.7",
     "pytest>=8.3.1",
     "python-dotenv>=1.0.0",
     "tiktoken>=0.9.0",
     "wandb>=0.19.8",
     "wandb-workspaces>=0.1.12",
+    "wandbot>=1.3.2",
     "networkx>=3.4.2",
+    "ipykernel>=6.29.5",
+    "litellm>=1.67.2",
+    "anthropic>=0.50.0",
+    "pytest-xdist>=3.6.1",
 ]
 
 [build-system]
@@ -20,7 +25,27 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-mcp_server = "mcp_server:main"
+wandb_mcp_server = "wandb_mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mcp_server"]
+packages = ["src/wandb_mcp_server"]
+
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "INFO"  # or "DEBUG"
+log_cli_format = "%(levelname)s %(message)s"
+log_cli_date_format = "%H:%M:%S"
+filterwarnings = [
+    # Ignore Sentry Hub deprecation from weave
+    'ignore:::weave\.trace\.trace_sentry',
+    # Ignore Pydantic Field 'include' deprecations
+    'ignore:Using extra keyword arguments on \`Field\`:pydantic.warnings.PydanticDeprecatedSince20',
+    'ignore:\`include\` is deprecated and does nothing:pydantic.warnings.PydanticDeprecatedSince20',
+    # Ignore Pydantic V1 validator deprecations from wandb_workspaces
+    'ignore:Pydantic V1 style .* validators are deprecated:pydantic.warnings.PydanticDeprecatedSince20:wandb_workspaces\.reports\.v2',
+    # Ignore Weave DeprecationWarning
+    'ignore:deprecated:DeprecationWarning:weave\.trace_server\.trace_server_interface',
+    # Ignore Pydantic __fields__ / __fields_set__ deprecations from weave
+    'ignore:The \`__fields__\` attribute is deprecated:pydantic.warnings.PydanticDeprecatedSince20:weave\.trace\.object_record',
+    'ignore:The \`__fields_set__\` attribute is deprecated:pydantic.warnings.PydanticDeprecatedSince20:weave\.trace\.object_record',
+]

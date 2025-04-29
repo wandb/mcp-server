@@ -57,7 +57,7 @@ WANDB_API_KEY=your_api_key_here
 Run the server using:
 
 ```bash
-uv run src/mcp_server/server.py
+uv run src/wandb_mcp_server/server.py
 ```
 
 ## Client Setup
@@ -72,7 +72,7 @@ uv run src/mcp_server/server.py
             "--directory",
             "/ABSOLUTE/PATH/TO/PROJECT",
             "run",
-            "src/mcp_server/server.py"
+            "src/wandb_mcp_server/server.py"
         ]
         }
     }
@@ -110,3 +110,16 @@ This indicates that the `uv` package manager cannot be found. Fix this with thes
 3. Restart your application or IDE after making these changes.
 
 This ensures that the `uv` executable is accessible from standard system paths that are typically included in the PATH for all processes.
+
+## Testing
+
+Set the appropriate api key in the `.env` file, e.g.
+
+```
+ANTHROPIC_API_KEY=<my_key>
+```
+
+Run a single test using pytest with 10 workers
+```
+uv run pytest -s -n 3 tests/test_query_wandb_gql.py
+```

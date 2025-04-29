@@ -65,7 +65,7 @@ if get_server_args().use_weave and weave is not None:
         )
     else:
         weave_entity_project = f"{get_server_args().weave_project}"
-    weave.init(weave_entity_project)
+    weave.init(weave_entity_project, autopatch_settings={"disable_autopatch": True})
 
 def merge_metadata(metadata_list: List[Dict]) -> Dict:
     """Merge metadata from multiple query results."""
