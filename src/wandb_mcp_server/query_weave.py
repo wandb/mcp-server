@@ -4,7 +4,6 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import wandb
 import weave
 from dotenv import load_dotenv
 from weave.trace_server import trace_server_interface
@@ -64,7 +63,6 @@ def get_weave_trace_server(api_key, project_id) -> weave.trace_server.trace_serv
     weave.weave_client.WeaveClient.ServerInterface # Assuming this type
         The initialized Weave trace server interface.
     """
-    wandb.login(key=api_key)
     weave_client = weave.init(project_id, autopatch_settings={"disable_autopatch": True})
     trace_server = weave_client.server
     return trace_server

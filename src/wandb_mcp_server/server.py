@@ -33,6 +33,8 @@ from wandb_mcp_server.utils import get_server_args
 os.environ["WANDB_SILENT"] = "True"
 weave_logger = logging.getLogger("weave")
 weave_logger.setLevel(logging.ERROR)
+gql_transport_logger = logging.getLogger("gql.transport.requests")
+gql_transport_logger.setLevel(logging.ERROR)
 
 # Load environment variables
 load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
@@ -180,19 +182,25 @@ def cli():
     api_key = get_server_args().wandb_api_key
     if api_key:
         original_stdout = sys.stdout
-        sys.stdout = captured_output = io.StringIO()
+        original_stderr = sys.stderr
+        sys.stdout = captured_stdout = io.StringIO()
+        sys.stderr = captured_stderr = io.StringIO()
         try:
             logger.info("Attempting explicit W&B login in cli()...")
             wandb.login(key=api_key)
-            login_msg = captured_output.getvalue().strip()
-            if login_msg:
-                logger.info(f"Suppressed output during W&B login: {login_msg}")
+            login_msg_stdout = captured_stdout.getvalue().strip()
+            login_msg_stderr = captured_stderr.getvalue().strip()
+            if login_msg_stdout:
+                logger.info(f"Suppressed stdout during W&B login: {login_msg_stdout}")
+            if login_msg_stderr:
+                logger.info(f"Suppressed stderr during W&B login: {login_msg_stderr}")
             logger.info("Explicit W&B login attempt finished.")
         except Exception as e:
             logger.error(f"Error during explicit W&B login: {e}")
             # Potentially re-raise or handle as a fatal error if login is critical
         finally:
             sys.stdout = original_stdout # Always restore stdout
+            sys.stderr = original_stderr # Always restore stderr
     else:
         logger.warning("WANDB_API_KEY not found via get_server_args(). Skipping explicit login.")
 
@@ -202,7 +210,7 @@ def cli():
             "WANDB_API_KEY must be set either as an environment variable, in .env file, or as a command-line argument"
         )
 
-    logger.info(f"Starting Weights & Biases MCP Server for {get_server_args().product_name}")
+    logger.info(f"Starting Weights & Biases MCP Server.")
     logger.info(
         f"API Key configured: {'Yes' if get_server_args().wandb_api_key else 'No'}"
     )

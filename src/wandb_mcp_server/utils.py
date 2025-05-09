@@ -15,6 +15,7 @@ weave_logger.setLevel(logging.ERROR)
 
 logger = logging.getLogger(__name__)
 
+
 # Define server arguments using a dataclass for simple_parsing
 @dataclass
 class ServerMCPArgs:
@@ -22,13 +23,6 @@ class ServerMCPArgs:
 
     wandb_api_key: Optional[str] = field(
         default=None, metadata=dict(help="Weights & Biases API key")
-    )
-    product_name: str = field(
-        default="weave", metadata=dict(help="Product name (weave, wandb, or all)")
-    )
-    use_weave: bool = field(
-        default=True,
-        metadata=dict(help="Whether or not to trace MCP server calls to weave"),
     )
     weave_entity: Optional[str] = field(
         default=None,
@@ -47,6 +41,7 @@ class ServerMCPArgs:
 # Initialize server args global variable
 _server_args = None
 
+
 # Moved helper functions
 def _wandb_base_url() -> str:
     # TODO: make configurable
@@ -64,12 +59,14 @@ def _wandb_api_key_via_netrc_file(filepath: str) -> str | None:
         _, _, api_key = res
     return api_key
 
+
 def _wandb_api_key_via_netrc() -> str | None:
     for filepath in ("~/.netrc", "~/_netrc"):
         api_key = _wandb_api_key_via_netrc_file(filepath)
         if api_key:
             return api_key
     return None
+
 
 def get_server_args():
     """Get the server arguments, parsing them if not already done."""
@@ -89,15 +86,6 @@ def get_server_args():
 
     return _server_args
 
-
-if get_server_args().use_weave and weave is not None:
-    if get_server_args().weave_entity is not None:
-        weave_entity_project = (
-            f"{get_server_args().weave_entity}/{get_server_args().weave_project}"
-        )
-    else:
-        weave_entity_project = f"{get_server_args().weave_project}"
-    weave.init(weave_entity_project, autopatch_settings={"disable_autopatch": True})
 
 def merge_metadata(metadata_list: List[Dict]) -> Dict:
     """Merge metadata from multiple query results."""
