@@ -182,7 +182,7 @@ def cli():
         original_stdout = sys.stdout
         sys.stdout = captured_output = io.StringIO()
         try:
-            logger.info("Attempting explicit W&B login...")
+            logger.info("Attempting explicit W&B login in cli()...")
             wandb.login(key=api_key)
             login_msg = captured_output.getvalue().strip()
             if login_msg:

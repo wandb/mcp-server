@@ -9,6 +9,10 @@ import simple_parsing
 from dataclasses import dataclass
 import weave
 
+os.environ["WANDB_SILENT"] = "True"
+weave_logger = logging.getLogger("weave")
+weave_logger.setLevel(logging.ERROR)
+
 logger = logging.getLogger(__name__)
 
 # Define server arguments using a dataclass for simple_parsing
