@@ -164,7 +164,7 @@ def query_wandb_entity_projects(entity: Optional[str] = None) -> List[Dict[str, 
 def query_wandb_support_bot(question: str) -> str:
     wandbot_base_url = os.getenv("WANDBOT_BASE_URL")
     if not wandbot_base_url:
-        raise ValueError("WANDBOT_BASE_URL environment variable is not set.")
+        wandbot_base_url = "https://wandbot.replit.app"
     return query_wandbot_api(question, wandbot_base_url=wandbot_base_url)
 
 
