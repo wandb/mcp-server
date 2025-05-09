@@ -10,7 +10,7 @@ from graphql.language import ast as gql_ast
 from graphql.language import parse
 from graphql.language import printer as gql_printer
 from graphql.language import visitor as gql_visitor
-from wandb_gql import gql
+from wandb_gql import gql  # This must be imported after wandb
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ Your choice of query structure depends heavily on this analysis (see Key Concept
 use the `run(name: $runId)` field. The variable `$runId` MUST be the ID, not the display name.
     *   To **find runs based on their human-readable `displayName`** (e.g., `my-cool-experiment-1`), \
 use the `runs` collection field with a `filters` argument like: `runs(filters: "{\\"displayName\\":\
-{\\"\$eq\\":\\"my-cool-experiment-1\\"}}")`. This might return multiple runs if display names are not unique.
+{\\"$eq\\":\\"my-cool-experiment-1\\"}}")`. This might return multiple runs if display names are not unique.
 *   **Filters require JSON Strings:** When using the `filters` argument (e.g., for `runs`, `artifacts`), \
 the value provided in the `variables` dictionary MUST be a JSON formatted *string*. Use `json.dumps()` in Python to create it.
 *   **Collections Require Pagination Structure:** Queries fetching lists/collections (like `project.runs`, \
