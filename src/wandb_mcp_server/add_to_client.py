@@ -31,22 +31,40 @@ def add_to_client(pathname: str | None = None) -> None:
 
     config_path = os.path.abspath(pathname)
 
-    # Read existing config file or create empty object if not exists
-    config = {"mcpServers": {}}
+    # Read existing config file or initialize a default structure
+    config = {"mcpServers": {}}  # Start with a default, ensures mcpServers key exists
     try:
         if os.path.exists(config_path):
             with open(config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-                print(f"Loaded existing config from {config_path}")
+                # Attempt to load. If file is empty or has invalid JSON,
+                # json.load will raise JSONDecodeError.
+                loaded_config = json.load(f)
+                # If load is successful, check if it's a dictionary (top-level JSON should be an object)
+                if isinstance(loaded_config, dict):
+                    config = loaded_config  # Use the loaded config
+                    print(f"Loaded existing config from {config_path}")
+                else:
+                    # Loaded JSON is not a dictionary (e.g. `null`, `[]`, `true`)
+                    # This is unexpected for a config file that should hold mcpServers.
+                    print(f"Warning: Config file {config_path} did not contain a JSON object. Using default config.")
+                    # config remains the default {"mcpServers": {}}
         else:
-            print(f"Config file doesn't exist. Will create new file at {config_path}")
-    except Exception as error:
-        print(f"Error reading config file: {str(error)}")
-        raise
+            print(f"Config file {config_path} doesn't exist. Will create new file.")
+            # config remains the default {"mcpServers": {}}
+    except json.JSONDecodeError as e:
+        # This handles empty file or malformed JSON.
+        print(f"Warning: Config file {config_path} is empty or contains invalid JSON: {e}. Using default config.")
+        # config remains the default {"mcpServers": {}}.
+    except IOError as e:
+        print(f"Fatal error reading config file {config_path}: {e}. Cannot proceed.")
+        sys.exit(f"Fatal error reading config file: {e}") # Exit if we can't read
 
-    # Ensure mcpServers exists in config
-    if "mcpServers" not in config:
-        config["mcpServers"] = {}
+    # Ensure the 'mcpServers' key exists and is a dictionary.
+    # This is a safeguard if the loaded_config was a dict but missed mcpServers or had it as a wrong type.
+    if not isinstance(config.get("mcpServers"), dict):
+        if os.path.exists(config_path): # Only print warning if file existed and was loaded
+             print(f"Warning: 'mcpServers' key in the loaded config from {config_path} was missing or not a dictionary. Initializing it.")
+        config["mcpServers"] = {} # Ensure it's a dictionary
 
     # Check for key overlaps
     existing_keys = set(config["mcpServers"].keys())

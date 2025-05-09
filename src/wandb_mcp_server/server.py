@@ -26,6 +26,11 @@ from wandb_mcp_server.tool_prompts import (
 from wandb_mcp_server.trace_utils import DateTimeEncoder
 from wandb_mcp_server.utils import get_server_args
 
+# Silence logging to avoid interfering with MCP server
+os.environ["WANDB_SILENT"] = "True"
+weave_logger = logging.getLogger("weave")
+weave_logger.setLevel(logging.ERROR)
+
 # Load environment variables
 load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
 
