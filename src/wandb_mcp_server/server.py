@@ -162,10 +162,7 @@ def query_wandb_entity_projects(entity: Optional[str] = None) -> List[Dict[str, 
 
 @mcp.tool(description=WANDBOT_TOOL_DESCRIPTION)
 def query_wandb_support_bot(question: str) -> str:
-    wandbot_base_url = os.getenv("WANDBOT_BASE_URL")
-    if not wandbot_base_url:
-        wandbot_base_url = "https://wandbot.replit.app"
-    return query_wandbot_api(question, wandbot_base_url=wandbot_base_url)
+    return query_wandbot_api(question)
 
 
 def cli():
