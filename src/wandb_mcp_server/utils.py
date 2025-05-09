@@ -47,6 +47,29 @@ class ServerMCPArgs:
 # Initialize server args global variable
 _server_args = None
 
+# Moved helper functions
+def _wandb_base_url() -> str:
+    # TODO: make configurable
+    return "https://api.wandb.ai"
+
+
+def _wandb_api_key_via_netrc_file(filepath: str) -> str | None:
+    netrc_path = os.path.expanduser(filepath)
+    if not os.path.exists(netrc_path):
+        return None
+    nrc = netrc.netrc(netrc_path)
+    res = nrc.authenticators(urlparse(_wandb_base_url()).netloc)
+    api_key = None
+    if res:
+        _, _, api_key = res
+    return api_key
+
+def _wandb_api_key_via_netrc() -> str | None:
+    for filepath in ("~/.netrc", "~/_netrc"):
+        api_key = _wandb_api_key_via_netrc_file(filepath)
+        if api_key:
+            return api_key
+    return None
 
 def get_server_args():
     """Get the server arguments, parsing them if not already done."""
@@ -136,26 +159,3 @@ def merge_metadata(metadata_list: List[Dict]) -> Dict:
         )
 
     return merged
-
-def _wandb_base_url() -> str:
-    # TODO: make configurable
-    return "https://api.wandb.ai"
-
-
-def _wandb_api_key_via_netrc_file(filepath: str) -> str | None:
-    netrc_path = os.path.expanduser(filepath)
-    if not os.path.exists(netrc_path):
-        return None
-    nrc = netrc.netrc(netrc_path)
-    res = nrc.authenticators(urlparse(_wandb_base_url()).netloc)
-    api_key = None
-    if res:
-        _, _, api_key = res
-    return api_key
-
-def _wandb_api_key_via_netrc() -> str | None:
-    for filepath in ("~/.netrc", "~/_netrc"):
-        api_key = _wandb_api_key_via_netrc_file(filepath)
-        if api_key:
-            return api_key
-    return None
