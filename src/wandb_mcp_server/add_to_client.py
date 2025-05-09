@@ -1,6 +1,11 @@
 import os
 import json
 import sys
+import logging
+
+# Configure basic logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 new_config = {
     "mcpServers": {
@@ -42,28 +47,28 @@ def add_to_client(pathname: str | None = None) -> None:
                 # If load is successful, check if it's a dictionary (top-level JSON should be an object)
                 if isinstance(loaded_config, dict):
                     config = loaded_config  # Use the loaded config
-                    print(f"Loaded existing config from {config_path}")
+                    logger.info(f"Loaded existing config from {config_path}")
                 else:
                     # Loaded JSON is not a dictionary (e.g. `null`, `[]`, `true`)
                     # This is unexpected for a config file that should hold mcpServers.
-                    print(f"Warning: Config file {config_path} did not contain a JSON object. Using default config.")
+                    logger.warning(f"Config file {config_path} did not contain a JSON object. Using default config.")
                     # config remains the default {"mcpServers": {}}
         else:
-            print(f"Config file {config_path} doesn't exist. Will create new file.")
+            logger.info(f"Config file {config_path} doesn't exist. Will create new file.")
             # config remains the default {"mcpServers": {}}
     except json.JSONDecodeError as e:
         # This handles empty file or malformed JSON.
-        print(f"Warning: Config file {config_path} is empty or contains invalid JSON: {e}. Using default config.")
+        logger.warning(f"Config file {config_path} is empty or contains invalid JSON: {e}. Using default config.")
         # config remains the default {"mcpServers": {}}.
     except IOError as e:
-        print(f"Fatal error reading config file {config_path}: {e}. Cannot proceed.")
+        logger.error(f"Fatal error reading config file {config_path}: {e}. Cannot proceed.")
         sys.exit(f"Fatal error reading config file: {e}") # Exit if we can't read
 
     # Ensure the 'mcpServers' key exists and is a dictionary.
     # This is a safeguard if the loaded_config was a dict but missed mcpServers or had it as a wrong type.
     if not isinstance(config.get("mcpServers"), dict):
         if os.path.exists(config_path): # Only print warning if file existed and was loaded
-             print(f"Warning: 'mcpServers' key in the loaded config from {config_path} was missing or not a dictionary. Initializing it.")
+             logger.warning(f"Warning: 'mcpServers' key in the loaded config from {config_path} was missing or not a dictionary. Initializing it.")
         config["mcpServers"] = {} # Ensure it's a dictionary
 
     # Check for key overlaps
@@ -72,14 +77,14 @@ def add_to_client(pathname: str | None = None) -> None:
     overlapping_keys = existing_keys.intersection(new_keys)
 
     if overlapping_keys:
-        print("The following tools already exist in your config and will be overwritten:")
+        logger.info("The following tools already exist in your config and will be overwritten:")
         for key in overlapping_keys:
-            print(f"- {key}")
+            logger.info(f"- {key}")
 
         # Ask for confirmation
         answer = input("Do you want to overwrite them? (y/N): ").lower()
         if answer != "y":
-            print("Operation cancelled.")
+            logger.info("Operation cancelled.")
             sys.exit(0)
 
     # Update config with new servers
@@ -93,13 +98,13 @@ def add_to_client(pathname: str | None = None) -> None:
     # Save the updated config
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
-    print(f"Successfully updated config at {config_path}")
+    logger.info(f"Successfully updated config at {config_path}")
 
 def add_to_client_cli():
     if len(sys.argv) > 1:
         add_to_client(sys.argv[1])
     else:
-        print("Please provide the path to your MCP client config as a command line argument")
+        logger.error("Please provide the path to your MCP client config as a command line argument")
         sys.exit(1)
 
 if __name__ == "__main__":

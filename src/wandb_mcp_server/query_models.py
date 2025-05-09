@@ -435,7 +435,7 @@ def query_wandb_reports(entity: str, project: str) -> List[Dict[str, Any]]:
         return reports_data
     except Exception as e:
         # Consider logging the error
-        print(
+        logger.error(
             f"Error listing reports for {entity}/{project}: {e}. Direct report listing might require GraphQL."
         )
         # Fallback or raise error

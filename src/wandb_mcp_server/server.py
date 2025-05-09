@@ -8,9 +8,12 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import sys # Added for stdout redirection
+import io # Added for stdout redirection
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+import wandb # Added for wandb.login and wandb.setup
 
 from wandb_mcp_server.query_models import list_entity_projects
 from wandb_mcp_server.query_weave import  paginated_query_traces
@@ -165,13 +168,41 @@ def query_wandb_support_bot(question: str) -> str:
 
 def cli():
     """Command-line interface for starting the Weave MCP Server."""
-    # Validate that we have the required API key
-    if not get_server_args().wandb_api_key:
+    # Ensure WANDB_SILENT is set, and attempt to configure wandb for silent operation globally
+    os.environ["WANDB_SILENT"] = "True"
+    try:
+        wandb.setup(settings=wandb.Settings(silent=True, console="off"))
+    except Exception as e:
+        logger.warning(f"Could not apply wandb.setup settings: {e}")
+
+    # Attempt to explicitly login to W&B and suppress its stdout messages
+    # This is to ensure login happens before mcp.run() and to capture login confirmations.
+    api_key = get_server_args().wandb_api_key
+    if api_key:
+        original_stdout = sys.stdout
+        sys.stdout = captured_output = io.StringIO()
+        try:
+            logger.info("Attempting explicit W&B login...")
+            wandb.login(key=api_key)
+            login_msg = captured_output.getvalue().strip()
+            if login_msg:
+                logger.info(f"Suppressed output during W&B login: {login_msg}")
+            logger.info("Explicit W&B login attempt finished.")
+        except Exception as e:
+            logger.error(f"Error during explicit W&B login: {e}")
+            # Potentially re-raise or handle as a fatal error if login is critical
+        finally:
+            sys.stdout = original_stdout # Always restore stdout
+    else:
+        logger.warning("WANDB_API_KEY not found via get_server_args(). Skipping explicit login.")
+
+    # Validate that we have the required API key (may be redundant if explicit login was attempted)
+    if not get_server_args().wandb_api_key: # Re-check, as get_server_args might have complex logic or state
         raise ValueError(
             "WANDB_API_KEY must be set either as an environment variable, in .env file, or as a command-line argument"
         )
 
-    print(f"Starting Weights & Biases MCP Server for {get_server_args().product_name}")
+    logger.info(f"Starting Weights & Biases MCP Server for {get_server_args().product_name}")
     logger.info(
         f"API Key configured: {'Yes' if get_server_args().wandb_api_key else 'No'}"
     )
