@@ -8,7 +8,7 @@ new_config = {
             "command": "uvx",
             "args": [
                 "--from", 
-                "git+https://github.com/wandb/wandb-mcp-server", 
+                "git+https://github.com/wandb/wandb-mcp-server#add_easy_install", 
                 "wandb_mcp_server"
             ],
         }
