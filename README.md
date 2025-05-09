@@ -154,5 +154,7 @@ ANTHROPIC_API_KEY=<my_key>
 
 Run a single test using pytest with 10 workers
 ```
-uv run pytest -s -n 3 tests/test_query_wandb_gql.py
+uv run pytest -s -n 10 tests/test_query_wandb_gql.py
+uv run pytest -s -n 10 tests/test_count_tools.py
+uv run pytest -s -n 10 tests/test_query_wandbot.py
 ```
