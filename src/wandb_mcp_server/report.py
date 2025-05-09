@@ -86,7 +86,7 @@ def create_report(
         else:
             report.blocks = blocks
 
-        print(report.blocks)
+        logger.info(f"Report blocks: {report.blocks}")
             
         # Save the report
         report.save()

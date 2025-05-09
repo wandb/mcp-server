@@ -8,9 +8,12 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import sys # Added for stdout redirection
+import io # Added for stdout redirection
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+import wandb # Added for wandb.login and wandb.setup
 
 from wandb_mcp_server.query_models import list_entity_projects
 from wandb_mcp_server.query_weave import  paginated_query_traces
@@ -25,6 +28,13 @@ from wandb_mcp_server.tool_prompts import (
 )
 from wandb_mcp_server.trace_utils import DateTimeEncoder
 from wandb_mcp_server.utils import get_server_args
+
+# Silence logging to avoid interfering with MCP server
+os.environ["WANDB_SILENT"] = "True"
+weave_logger = logging.getLogger("weave")
+weave_logger.setLevel(logging.ERROR)
+gql_transport_logger = logging.getLogger("gql.transport.requests")
+gql_transport_logger.setLevel(logging.ERROR)
 
 # Load environment variables
 load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
@@ -152,21 +162,52 @@ def query_wandb_entity_projects(entity: Optional[str] = None) -> List[Dict[str, 
 
 @mcp.tool(description=WANDBOT_TOOL_DESCRIPTION)
 def query_wandb_support_bot(question: str) -> str:
-    wandbot_base_url = os.getenv("WANDBOT_BASE_URL")
-    if not wandbot_base_url:
-        raise ValueError("WANDBOT_BASE_URL environment variable is not set.")
-    return query_wandbot_api(question, wandbot_base_url=wandbot_base_url)
+    return query_wandbot_api(question)
 
 
 def cli():
     """Command-line interface for starting the Weave MCP Server."""
-    # Validate that we have the required API key
-    if not get_server_args().wandb_api_key:
+    # Ensure WANDB_SILENT is set, and attempt to configure wandb for silent operation globally
+    os.environ["WANDB_SILENT"] = "True"
+    try:
+        wandb.setup(settings=wandb.Settings(silent=True, console="off"))
+    except Exception as e:
+        logger.warning(f"Could not apply wandb.setup settings: {e}")
+
+    # Attempt to explicitly login to W&B and suppress its stdout messages
+    # This is to ensure login happens before mcp.run() and to capture login confirmations.
+    api_key = get_server_args().wandb_api_key
+    if api_key:
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+        sys.stdout = captured_stdout = io.StringIO()
+        sys.stderr = captured_stderr = io.StringIO()
+        try:
+            logger.info("Attempting explicit W&B login in cli()...")
+            wandb.login(key=api_key)
+            login_msg_stdout = captured_stdout.getvalue().strip()
+            login_msg_stderr = captured_stderr.getvalue().strip()
+            if login_msg_stdout:
+                logger.info(f"Suppressed stdout during W&B login: {login_msg_stdout}")
+            if login_msg_stderr:
+                logger.info(f"Suppressed stderr during W&B login: {login_msg_stderr}")
+            logger.info("Explicit W&B login attempt finished.")
+        except Exception as e:
+            logger.error(f"Error during explicit W&B login: {e}")
+            # Potentially re-raise or handle as a fatal error if login is critical
+        finally:
+            sys.stdout = original_stdout # Always restore stdout
+            sys.stderr = original_stderr # Always restore stderr
+    else:
+        logger.warning("WANDB_API_KEY not found via get_server_args(). Skipping explicit login.")
+
+    # Validate that we have the required API key (may be redundant if explicit login was attempted)
+    if not get_server_args().wandb_api_key: # Re-check, as get_server_args might have complex logic or state
         raise ValueError(
             "WANDB_API_KEY must be set either as an environment variable, in .env file, or as a command-line argument"
         )
 
-    print(f"Starting Weights & Biases MCP Server for {get_server_args().product_name}")
+    logger.info(f"Starting Weights & Biases MCP Server.")
     logger.info(
         f"API Key configured: {'Yes' if get_server_args().wandb_api_key else 'No'}"
     )

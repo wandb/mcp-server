@@ -1,3 +1,4 @@
+import os
 import calendar
 import logging
 from datetime import datetime
@@ -12,16 +13,18 @@ from weave.trace_server.interface.query import (
     ContainsSpec,
     EqOperation,
     GetFieldOperator,
-    GtOperation,
     GteOperation,
+    GtOperation,
     LiteralOperation,
     NotOperation,
     Query,
 )
 
-import wandb
-import weave
 from wandb_mcp_server.trace_utils import process_traces
+
+os.environ["WANDB_SILENT"] = "True"
+weave_logger = logging.getLogger("weave")
+weave_logger.setLevel(logging.ERROR)
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +63,6 @@ def get_weave_trace_server(api_key, project_id) -> weave.trace_server.trace_serv
     weave.weave_client.WeaveClient.ServerInterface # Assuming this type
         The initialized Weave trace server interface.
     """
-    wandb.login(key=api_key)
     weave_client = weave.init(project_id, autopatch_settings={"disable_autopatch": True})
     trace_server = weave_client.server
     return trace_server
