@@ -44,7 +44,9 @@ Returns:
 """
 
 QUERY_WEAVE_TRACES_TOOL_DESCRIPTION = """
-Query Weave traces, trace metadata, and trace costs with filtering and sorting options.
+Query Weave traces, trace metadata, and trace costs with filtering and sorting options. 
+
+First, use the `write_query_plan_tool` to write a query plan to help answer the user's question.
 
 <wandb_vs_weave_product_distinction>
 **IMPORTANT PRODUCT DISTINCTION:**
