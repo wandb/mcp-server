@@ -180,6 +180,11 @@ Args:
         - time_range: Dict with "start" and "end" datetime strings. Datetime strings should be in ISO format
             (e.g. `2024-01-01T00:00:00Z`)
         - attributes: Dict of the weave attributes of the trace.
+            Supports nested paths (e.g., "metadata.model_name") via dot notation.
+            Value can be:
+            *   A literal for exact equality (e.g., `"status": "success"`)
+            *   A dictionary with a comparison operator: `$gt`, `$lt`, `$eq`, `$gte`, `$lte` (e.g., `{"token_count": {"$gt": 100}}`)
+            *   A dictionary with the `$contains` operator for substring matching on string attributes (e.g., `{"model_name": {"$contains": "gpt-3"}}`)
         - has_exception: Optional[bool] to filter traces by exception status:
             - None (or key not present): Show all traces regardless of exception status
             - True: Show only traces that have exceptions (exception field is not null)
