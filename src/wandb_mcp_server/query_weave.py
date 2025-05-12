@@ -21,10 +21,12 @@ from weave.trace_server.interface.query import (
 )
 
 from wandb_mcp_server.trace_utils import process_traces
+from wandb_mcp_server.utils import RedirectLoggerHandler
 
 os.environ["WANDB_SILENT"] = "True"
-weave_logger = logging.getLogger("weave")
-weave_logger.setLevel(logging.ERROR)
+# Keep weave logger definition but remove level setting here
+# weave_logger = logging.getLogger("weave")
+# weave_logger.setLevel(logging.ERROR)
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,19 @@ def get_weave_trace_server(api_key, project_id) -> weave.trace_server.trace_serv
     weave.weave_client.WeaveClient.ServerInterface # Assuming this type
         The initialized Weave trace server interface.
     """
+    weave_logger_instance = logging.getLogger("weave")
+    weave_logger_instance.setLevel(logging.INFO)
+    weave_logger_instance.propagate = False
+
+    # Remove any default handlers weave might have added
+    for handler in weave_logger_instance.handlers[:]:
+        weave_logger_instance.removeHandler(handler)
+
+    # Add our redirect handler, targeting the main logger of this module
+    redirect_handler = RedirectLoggerHandler(logger)
+    weave_logger_instance.addHandler(redirect_handler)
+
+    # Now initialize weave - its logs should be redirected
     weave_client = weave.init(project_id, autopatch_settings={"disable_autopatch": True})
     trace_server = weave_client.server
     return trace_server
@@ -651,6 +666,22 @@ def _build_query_expression(filters: Dict[str, Any]) -> Optional[Query]:
                     # Assume literal equality
                     comp_op = _create_comparison_op(full_attr_path, {"$eq": attr_value_or_op})
                     if comp_op: operations.append(comp_op)
+
+                # Check for $contains operation in attributes
+                if isinstance(attr_value_or_op, dict) and "$contains" in attr_value_or_op:
+                    if isinstance(attr_value_or_op["$contains"], str):
+                        contains_op = ContainsOperation(
+                            **{
+                                "$contains": ContainsSpec(
+                                    input=GetFieldOperator(**{"$getField": full_attr_path}),
+                                    substr=LiteralOperation(**{"$literal": attr_value_or_op["$contains"]}),
+                                    case_insensitive=True,
+                                )
+                            }
+                        )
+                        operations.append(contains_op)
+                    else:
+                        logger.warning(f"Invalid value for $contains on {full_attr_path}: {attr_value_or_op['$contains']}. Expected string.")
         else:
              logger.warning(f"Invalid format for 'attributes' filter: {attributes_filters}. Expected a dictionary. Skipping.")
 
