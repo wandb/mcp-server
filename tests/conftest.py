@@ -3,6 +3,10 @@ import weave
 import os
 import logging
 
+os.environ["WANDB_SILENT"] = "True"
+weave_logger = logging.getLogger("weave")
+weave_logger.setLevel(logging.ERROR)
+
 # Configure logging early
 logger = logging.getLogger(__name__)
 
