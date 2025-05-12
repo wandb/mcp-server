@@ -657,6 +657,24 @@ def _build_query_expression(filters: Dict[str, Any]) -> Optional[Query]:
                 if comp:
                     operations.append(comp)
 
+    # Handle wb_run_id filter (top-level)
+    if "wb_run_id" in filters:
+        run_id = filters["wb_run_id"]
+        if isinstance(run_id, str):
+            # Use $contains for partial match on the top-level field
+            contains_op = ContainsOperation(
+                **{
+                    "$contains": ContainsSpec(
+                        input=GetFieldOperator(**{"$getField": "wb_run_id"}),
+                        substr=LiteralOperation(**{"$literal": run_id}),
+                        case_insensitive=True, # Case-insensitive match
+                    )
+                }
+            )
+            operations.append(contains_op)
+        else:
+            logger.warning(f"Invalid wb_run_id filter value: {run_id}. Expected a string. Skipping.")
+
     # Handle latency filter based on summary.weave.latency_ms
     if "latency" in filters:
         latency_filter = filters["latency"]

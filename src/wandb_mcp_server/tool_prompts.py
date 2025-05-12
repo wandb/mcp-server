@@ -177,6 +177,7 @@ Args:
         - call_ids: Filter by specific call IDs (string or list of strings). Note it is the call_id, not the
             trace id that is exposed in a weave url.
         - parent_ids: Return traces that are children of the given parent trace ids (string or list of strings)
+        - wb_run_id: Filter by the associated Weights & Biases Run ID (string). Performs a case-insensitive 'contains' match, so you can provide just the 8-character ID. Note: This is a top-level filter, not nested under 'attributes'.
         - status: Filter by trace status, defined as whether or not the trace had an exception or not. Can be
             `success` or `exception`.
         - time_range: Dict with "start" and "end" datetime strings. Datetime strings should be in ISO format
