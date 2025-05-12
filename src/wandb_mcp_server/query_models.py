@@ -75,7 +75,7 @@ def list_entity_projects(entity: str = None) -> List[Dict[str, Any]]:
 def query_wandb_runs(
     entity: str,
     project: str,
-    per_page: int = 50,
+    per_page: int = 100,
     order: str = "-created_at",
     filters: Dict[str, Any] = None,
     search: str = None,
@@ -86,7 +86,7 @@ def query_wandb_runs(
     Args:
         entity (str): The wandb entity (username or team name)
         project (str): The project name
-        per_page (int): Number of runs to fetch (default: 50)
+        per_page (int): Number of runs to fetch (default: 100)
         order (str): Sort order (default: "-created_at"). Prefix with "-" for descending order.
                     Examples: "created_at", "-created_at", "name", "-name", "state", "-state"
         filters (Dict[str, Any]): Dictionary of filters to apply. Keys can be:

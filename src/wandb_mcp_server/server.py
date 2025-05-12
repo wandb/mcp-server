@@ -18,6 +18,7 @@ import wandb # Added for wandb.login and wandb.setup
 from wandb_mcp_server.query_models import list_entity_projects
 from wandb_mcp_server.query_weave import  paginated_query_traces
 from wandb_mcp_server.tools.count_traces import count_traces, COUNT_WEAVE_TRACES_TOOL_DESCRIPTION
+from wandb_mcp_server.tools.plan import write_query_plan, WRITE_QUERY_PLAN_TOOL_DESCRIPTION
 from wandb_mcp_server.tools.query_wandb_gql import query_paginated_wandb_gql, QUERY_WANDB_GQL_TOOL_DESCRIPTION
 from wandb_mcp_server.tools.query_wandbot import query_wandbot_api, WANDBOT_TOOL_DESCRIPTION
 from wandb_mcp_server.report import create_report
@@ -47,6 +48,11 @@ logger = logging.getLogger("weave-mcp-server")
 mcp = FastMCP("weave-mcp-server")
 
 
+@mcp.tool(description=WRITE_QUERY_PLAN_TOOL_DESCRIPTION)
+def write_query_plan_tool(plan: str) -> str:
+    return write_query_plan(plan)
+
+
 @mcp.tool(description=QUERY_WEAVE_TRACES_TOOL_DESCRIPTION)
 async def query_weave_traces_tool(
     entity_name: str,
@@ -68,7 +74,7 @@ async def query_weave_traces_tool(
         result = await paginated_query_traces(
             entity_name=entity_name,
             project_name=project_name,
-            chunk_size=50,
+            chunk_size=100,
             filters=filters,
             sort_by=sort_by,
             sort_direction=sort_direction,

@@ -101,9 +101,9 @@ variables : dict[str, Any] | None, optional
                                             as a JSON formatted *string*. Use `json.dumps()` in Python 
                                             to create this string.**
 max_items : int, optional
-    Maximum number of items to fetch across all pages. Default is 100.
+    Maximum number of items to fetch across all pages. Default is 250.
 items_per_page : int, optional
-    Number of items to request per page. Default is 50.
+    Number of items to request per page. Default is 100.
 
 Returns
 -------
@@ -565,8 +565,8 @@ def get_nested_value(obj: Dict, path: list[str]) -> Optional[Any]:
 def query_paginated_wandb_gql(
     query: str,
     variables: Optional[Dict[str, Any]] = None,
-    max_items: int = 100,
-    items_per_page: int = 50,
+    max_items: int = 250,
+    items_per_page: int = 100,
 ) -> Dict[str, Any]:
     """
     Execute a GraphQL query against the W&B API with pagination support using AST modification.
