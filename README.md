@@ -50,6 +50,13 @@ From there, you can use the `add_to_client` helper to add the server to your MCP
 `uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.cursor/mcp.json && uvx wandb login`
 
 ### Claude desktop:
+Ensure `uv` is installed, you might have to use brew to install instead:
+
+```
+brew install uv
+```
+
+then:
 `uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library/Application\ Support/Claude/claude_desktop_config.json && uvx wandb login`
 
 ### Manually

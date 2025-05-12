@@ -11,9 +11,33 @@ import weave
 
 os.environ["WANDB_SILENT"] = "True"
 weave_logger = logging.getLogger("weave")
-weave_logger.setLevel(logging.ERROR)
+# Let the specific application configure the level if needed
+# weave_logger.setLevel(logging.ERROR) # Removed default level setting
 
 logger = logging.getLogger(__name__)
+
+
+# Define a handler to redirect logs
+class RedirectLoggerHandler(logging.Handler):
+    """A handler that redirects log records to another logger."""
+    def __init__(self, target_logger, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.target_logger = target_logger
+
+    def emit(self, record):
+        # Format the message using the handler's formatter if it has one
+        # otherwise use the record's message. This ensures consistency
+        # if formatters are used elsewhere.
+        try:
+            msg = self.format(record)
+            new_record = logging.makeLogRecord({
+                **record.__dict__,
+                'msg': msg,
+                'args': [], # Args are already incorporated into msg by format()
+            })
+            self.target_logger.handle(new_record)
+        except Exception:
+            self.handleError(record)
 
 
 # Define server arguments using a dataclass for simple_parsing
