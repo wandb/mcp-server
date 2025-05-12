@@ -185,6 +185,7 @@ Args:
             *   A literal for exact equality (e.g., `"status": "success"`)
             *   A dictionary with a comparison operator: `$gt`, `$lt`, `$eq`, `$gte`, `$lte` (e.g., `{"token_count": {"$gt": 100}}`)
             *   A dictionary with the `$contains` operator for substring matching on string attributes (e.g., `{"model_name": {"$contains": "gpt-3"}}`)
+            **Warning:** The `$contains` operator performs simple substring matching only, full regular expression matching (e.g., via `$regex`) is **not supported** for attributes. Do not attempt to use `$regex`.
         - has_exception: Optional[bool] to filter traces by exception status:
             - None (or key not present): Show all traces regardless of exception status
             - True: Show only traces that have exceptions (exception field is not null)
