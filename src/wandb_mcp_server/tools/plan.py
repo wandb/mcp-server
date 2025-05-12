@@ -1,4 +1,6 @@
-WRITE_QUERY_PLAN_TOOL_DESCRIPTION = """Create a plan for how to answer the user's question using the available Weights & Biases data query tools.
+WRITE_QUERY_PLAN_TOOL_DESCRIPTION = """
+If this is your first time querying Weights & Biases data, it is very important to use this tool to first \
+write a plan for how to answer the user's question using the available Weights & Biases data query tools.
 
 <purpose_of_the_plan>
 Weights & Biases stores an incredible amount of metrics, metadata and traces and sometime users make \
