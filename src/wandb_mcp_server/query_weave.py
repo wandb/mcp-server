@@ -278,15 +278,28 @@ def query_traces(
             "summary": call.summary,
         }
 
-        # Add costs if included
+        # 2. Define and add known extra top-level keys if they exist
+        extra_keys = [
+            "wb_user_id",
+            "wb_run_id",
+            "deleted_at",
+            "storage_size_bytes",
+            "total_storage_size_bytes",
+        ]
+        for key in extra_keys:
+            if hasattr(call, key):
+                value = getattr(call, key)
+                call_dict[key] = value
+
+        # 3. Add costs if included
         if include_costs and hasattr(call, "costs"):
             call_dict["costs"] = call.costs
 
-        # Add feedback if included
+        # 4. Add feedback if included
         if include_feedback and hasattr(call, "feedback"):
             call_dict["feedback"] = call.feedback
 
-        # Filter the dictionary to only include requested columns if specified
+        # 5. Filter the dictionary to only include requested columns if specified
         if columns:
             call_dict = {k: v for k, v in call_dict.items() if k in columns}
 
