@@ -1,1 +1,3 @@
-# This file marks the 'tests' directory as a Python package for absolute imports. 
+"""
+Tests package for wandb-mcp-server.
+"""
