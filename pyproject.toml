@@ -13,6 +13,7 @@ dependencies = [
     "wandb>=0.19.8",
     "wandb-workspaces>=0.1.12",
     "networkx>=3.4.2",
+    "requests>=2.31.0",
 ]
 
 [build-system]
