@@ -5,6 +5,10 @@ from typing import List, Dict, Any, Tuple, Optional
 import anthropic
 import weave
 
+# Load .env file before anything else that might need environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")

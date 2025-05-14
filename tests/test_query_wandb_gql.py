@@ -8,38 +8,25 @@ validate.
 """
 
 import json
-import logging
 import os
 from typing import Any, Dict, List
-import sys
 
 import pytest
-from rich.logging import RichHandler
-from rich.console import Console
-from wandb_mcp_server.tools.query_wandb_gql import (
+from wandb_mcp_server.mcp_tools.query_wandb_gql import (
     QUERY_WANDB_GQL_TOOL_DESCRIPTION,
     query_paginated_wandb_gql,
 )
-from wandb_mcp_server.tools.tools_utils import generate_anthropic_tool_schema
+from wandb_mcp_server.mcp_tools.tools_utils import generate_anthropic_tool_schema
 from tests.anthropic_test_utils import (
     call_anthropic,
     extract_anthropic_tool_use,
     check_correctness_tool,
 )
-
-import weave
+from wandb_mcp_server.utils import get_rich_logger
 
 
 # Root logging configuration
-_console = Console(file=sys.__stdout__, force_terminal=True)
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(message)s",
-    handlers=[RichHandler(show_time=True, show_level=True, show_path=False, markup=True, console=_console)],
-    force=True,
-)
-
-logger = logging.getLogger(__name__)
+logger = get_rich_logger(__name__)
 
 # weave.init("wandb-applied-ai-team/wandb-mcp-server-test-outputs")
 # os.environ["WANDB_SILENT"] = "true"
@@ -323,5 +310,3 @@ Please re-analyze the original query ("{query_text}") and the result from your p
 
     # If we reach here, it means the correctness check passed within the allowed attempts.
     logger.info("--- Test passed within allowed attempts. ---")
-
-    # --- Removed the old assertion logic that was outside the try/loop block --- 

@@ -3,28 +3,39 @@
 Weights & Biases MCP Server - A Model Context Protocol server for querying Weights & Biases data.
 """
 
+import io
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-import sys # Added for stdout redirection
-import io # Added for stdout redirection
 
+import wandb
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
-import wandb # Added for wandb.login and wandb.setup
 
 from wandb_mcp_server.query_models import list_entity_projects
-from wandb_mcp_server.query_weave import  paginated_query_traces
-from wandb_mcp_server.tools.count_traces import count_traces, COUNT_WEAVE_TRACES_TOOL_DESCRIPTION
-from wandb_mcp_server.tools.query_wandb_gql import query_paginated_wandb_gql, QUERY_WANDB_GQL_TOOL_DESCRIPTION
-from wandb_mcp_server.tools.query_wandbot import query_wandbot_api, WANDBOT_TOOL_DESCRIPTION
 from wandb_mcp_server.report import create_report
 from wandb_mcp_server.tool_prompts import (
     CREATE_WANDB_REPORT_TOOL_DESCRIPTION,
     LIST_ENTITY_PROJECTS_TOOL_DESCRIPTION,
-    QUERY_WEAVE_TRACES_TOOL_DESCRIPTION
+)
+from wandb_mcp_server.mcp_tools.count_traces import (
+    COUNT_WEAVE_TRACES_TOOL_DESCRIPTION,
+    count_traces,
+)
+from wandb_mcp_server.mcp_tools.query_wandb_gql import (
+    QUERY_WANDB_GQL_TOOL_DESCRIPTION,
+    query_paginated_wandb_gql,
+)
+from wandb_mcp_server.mcp_tools.query_wandbot import (
+    WANDBOT_TOOL_DESCRIPTION,
+    query_wandbot_api,
+)
+from wandb_mcp_server.mcp_tools.query_weave import (
+    QUERY_WEAVE_TRACES_TOOL_DESCRIPTION,
+    query_paginated_weave_traces,
 )
 from wandb_mcp_server.trace_utils import DateTimeEncoder
 from wandb_mcp_server.utils import get_server_args
@@ -65,7 +76,7 @@ async def query_weave_traces_tool(
 ) -> str:
     try:
         # Use paginated query with chunks of 20
-        result = await paginated_query_traces(
+        result = await query_paginated_weave_traces(
             entity_name=entity_name,
             project_name=project_name,
             chunk_size=50,

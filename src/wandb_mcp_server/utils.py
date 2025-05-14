@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import asyncio
 import netrc
 import os
 from dataclasses import field
@@ -8,6 +11,7 @@ from urllib.parse import urlparse
 import simple_parsing
 from dataclasses import dataclass
 import weave
+from rich.logging import RichHandler
 
 os.environ["WANDB_SILENT"] = "True"
 weave_logger = logging.getLogger("weave")
@@ -171,3 +175,17 @@ def merge_metadata(metadata_list: List[Dict]) -> Dict:
         )
 
     return merged
+
+
+def get_rich_logger(name: str) -> logging.Logger:
+    """Configure and return a logger with RichHandler."""
+    logger = logging.getLogger(name)
+    _rich_handler = RichHandler(
+        show_time=True, show_level=True, show_path=False, markup=True
+    )
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    logger.addHandler(_rich_handler)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    return logger
