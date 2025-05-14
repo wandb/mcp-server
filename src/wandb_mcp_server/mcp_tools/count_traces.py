@@ -6,8 +6,8 @@ from typing import Any, Dict
 
 import requests
 
-from wandb_mcp_server.tools.query_weave import _build_query_expression
-from wandb_mcp_server.tools.tools_utils import get_retry_session
+from wandb_mcp_server.mcp_tools.query_weave import _build_query_expression
+from wandb_mcp_server.mcp_tools.tools_utils import get_retry_session
 
 logger = logging.getLogger(__name__)
 
