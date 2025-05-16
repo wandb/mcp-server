@@ -239,7 +239,7 @@ def query_traces(
     filters: Dict[str, Any] = {},
     sort_by: str = "started_at",
     sort_direction: str = "desc",
-    limit: int | None = 100,
+    limit: int = 100,
     offset: int = 0,
     include_costs: bool = True,
     include_feedback: bool = True,
