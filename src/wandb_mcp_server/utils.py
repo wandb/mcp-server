@@ -11,9 +11,8 @@ import simple_parsing
 from dataclasses import dataclass
 from rich.logging import RichHandler
 
-os.environ["WANDB_SILENT"] = "True"
-weave_logger = logging.getLogger("weave")
 
+os.environ["WANDB_SILENT"] = "True"
 
 # Define a handler to redirect logs
 class RedirectLoggerHandler(logging.Handler):
