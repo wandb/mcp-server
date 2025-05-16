@@ -122,11 +122,12 @@ before querying for them as query_trace_tool can return a lot of data.
 - Partial op name matching: Use the `op_name_contains` filter if a users has only given a partial op name or if they
 are unsure of the exact op name.
 
-- Evaluations: If asked about weave evaluations or evals traces filter for traces with:
-    `op_name_contains = "Evaluation.evaluate"` as a first step. These ops are parent traces that contain
+- Weave Evaluations: If asked about weave evaluations or evals traces:
+    - filter for traces with `op_name_contains = "Evaluation.evaluate"` as a first step. These ops are parent traces that contain
     aggregated stats and scores about the evaluation. The child traces of these ops are the actual evaluation results
     for each sample in an evaluation dataset. If asked about individual rows in an evaluation then use the parent_ids
     filter to return the child traces.
+    - if a parent id (or parentId) is provided then ensure to use that filter in the query.
 
 - Weave nomenclature: Note that users might refer to weave ops as "traces" or "calls" or "traces" as "ops".
 
