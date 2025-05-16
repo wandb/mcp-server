@@ -11,18 +11,26 @@ We provide a helper utility for easily installing the Weights and Biases MCP Ser
 
 From there, you can use the `add_to_client` helper to add the server to your MCP client - inspired by the OpenMCP Server Registry [`add-to-client` pattern](https://www.open-mcp.org/servers)
 
-### Cursor project (run from the project dir):
+### Cursor
+
+#### Cursor project (run from the project dir):
 ```
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client .cursor/mcp.json && uvx wandb login
 ```
 
-### Cursor global (applies to all projects):
+#### Cursor global (applies to all projects):
 ```
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.cursor/mcp.json && uvx wandb login
 ```
 
-### Claude desktop:
-Ensure `uv` is installed, you might have to use brew to install instead:
+### Windsurf
+
+```
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.codeium/windsurf/mcp_config.json && uvx wandb login
+```
+
+### Claude Desktop:
+First ensure `uv` is installed, you might have to use brew to install instead:
 
 ```
 brew install uv
@@ -34,7 +42,7 @@ then:
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library/Application\ Support/Claude/claude_desktop_config.json && uvx wandb login
 ```
 
-### Manually
+### Manual Installation
 If you don't want to use the helper above, add the following to your MCP client config manually:
 
 ```
@@ -52,7 +60,30 @@ If you don't want to use the helper above, add the following to your MCP client 
 }
 ```
 
-## Available tools
+### Running from Source
+
+```bash
+git clone https://github.com/wandb/wandb-mcp-server.git
+cd wandb-mcp-server && uv venv && source .venv/bin/activate
+uv pip install -e .
+```
+
+#### Configuration
+
+1. Create a `.env` file in the root directory with your Weights & Biases API key:
+```
+WANDB_API_KEY=your_api_key_here
+```
+
+#### Running the Server
+
+Run the server using:
+
+```bash
+uv run src/wandb_mcp_server/server.py
+```
+
+## Available W&B tools
 
 ### wandb
 -  **`query_wandb_gql_tool`**: Execute an arbitrary GraphQL query against wandb experiment tracking data including Projects, Runs, Artifacts, Sweeps, Reports, etc.
@@ -74,35 +105,10 @@ If you don't want to use the helper above, add the following to your MCP client 
 
 ## Usage
 
-Ensure you specify the W&B Entity and W&B Project to the LLM/MCP Client.
-
-Example query for Claude Desktop:
+Ensure you specify the W&B Entity and W&B Project to the LLM/MCP Client. Example query for Claude Desktop:
 
 ```markdown
 how many openai.chat traces in the wandb-applied-ai-team/mcp-tests weave project? plot the most recent 5 traces over time and save to a report
-```
-
-## Running from Source
-
-```bash
-git clone https://github.com/wandb/wandb-mcp-server.git
-cd wandb-mcp-server && uv venv && source .venv/bin/activate
-uv pip install -e .
-```
-
-### Configuration
-
-1. Create a `.env` file in the root directory with your Weights & Biases API key:
-```
-WANDB_API_KEY=your_api_key_here
-```
-
-### Running the Server
-
-Run the server using:
-
-```bash
-uv run src/wandb_mcp_server/server.py
 ```
 
 ### Client Setup
