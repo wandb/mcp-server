@@ -118,7 +118,7 @@ Examples
 def count_traces(
     entity_name: str,
     project_name: str,
-    filters: Dict[str, Any] = None,
+    filters: dict = None,
     request_timeout: int = 30,
 ) -> int:
     """Count the number of traces matching the given filters.

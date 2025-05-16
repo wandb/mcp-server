@@ -99,12 +99,15 @@ def get_server_args():
         if os.environ.get("PARSE_ARGS_AT_IMPORT", "0") == "1":
             _server_args = simple_parsing.parse(ServerMCPArgs)
 
-        # Get API key from environment if not provided via CLI
+        # Check netrc file first, and if found, set it in the environment
+        netrc_api_key = _wandb_api_key_via_netrc()
+        if netrc_api_key:
+            os.environ["WANDB_API_KEY"] = netrc_api_key
+            _server_args.wandb_api_key = netrc_api_key
+        
+        # If not set via netrc, try environment variable
         if not _server_args.wandb_api_key:
             _server_args.wandb_api_key = os.getenv("WANDB_API_KEY", "")
-
-        if not _server_args.wandb_api_key:
-            _server_args.wandb_api_key = _wandb_api_key_via_netrc()
 
     return _server_args
 
