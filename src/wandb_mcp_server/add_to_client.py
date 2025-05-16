@@ -3,9 +3,13 @@ import json
 import sys
 import logging
 
+import wandb
+from dotenv import load_dotenv
+from wandb_mcp_server.utils import get_rich_logger
+
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-logger = logging.getLogger(__name__)
+logger = get_rich_logger(__name__)
 
 new_config = {
     "mcpServers": {

@@ -11,13 +11,12 @@ from .server import mcp, cli
 from .add_to_client import add_to_client_cli
 
 # Import the raw HTTP-based implementation
-from .mcp_tools.query_weave import query_traces, query_paginated_weave_traces
+from .mcp_tools.query_weave import query_paginated_weave_traces
 
 # Define what gets imported with "from weave_mcp_server import *"
 __all__ = [
     "mcp", 
     "cli", 
-    "query_traces", 
     "query_paginated_weave_traces",
     "add_to_client_cli",
 ]

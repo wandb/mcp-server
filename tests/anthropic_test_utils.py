@@ -65,10 +65,19 @@ def call_anthropic(
 def extract_anthropic_tool_use(response) -> Tuple[Any, str | None, Dict[str, Any] | None, str | None]:
     """Grab the first tool_use block from an Anthropic response and return (tool_use, name, input, id)."""
     for idx, content in enumerate(response.content):
-        logger.debug("Response content %s: %s", idx, content)
+        logger.debug(f"LLM response content {idx}: {content}")
         if content.type == "tool_use":
             return content, content.name, content.input, content.id
     return None, None, None, None
+
+@weave.op
+def extract_anthropic_text(response) -> Tuple[Any, str | None, Dict[str, Any] | None, str | None]:
+    """Grab the first text block from an Anthropic response and return (text, id)."""
+    for idx, content in enumerate(response.content):
+        logger.debug(f"LLM response content {idx}: {content}")
+        if content.type == "text":
+            return content.text
+    return None, None
 
 @weave.op
 def get_anthropic_tool_result_message(tool_result: Any, tool_id: str) -> Dict[str, Any]:

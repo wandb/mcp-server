@@ -38,13 +38,13 @@ from wandb_mcp_server.mcp_tools.query_weave import (
     query_paginated_weave_traces,
 )
 from wandb_mcp_server.trace_utils import DateTimeEncoder
-from wandb_mcp_server.utils import get_server_args
+from wandb_mcp_server.utils import get_rich_logger, get_server_args
 
 # Silence logging to avoid interfering with MCP server
 os.environ["WANDB_SILENT"] = "True"
-weave_logger = logging.getLogger("weave")
+weave_logger = get_rich_logger("weave")
 weave_logger.setLevel(logging.ERROR)
-gql_transport_logger = logging.getLogger("gql.transport.requests")
+gql_transport_logger = get_rich_logger("gql.transport.requests")
 gql_transport_logger.setLevel(logging.ERROR)
 
 # Load environment variables
@@ -52,7 +52,7 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("weave-mcp-server")
+logger = get_rich_logger("weave-mcp-server")
 
 # Create an MCP server using FastMCP
 mcp = FastMCP("weave-mcp-server")

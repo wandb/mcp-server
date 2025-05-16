@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import netrc
 import os
 from dataclasses import field
@@ -10,15 +9,10 @@ from urllib.parse import urlparse
 
 import simple_parsing
 from dataclasses import dataclass
-import weave
 from rich.logging import RichHandler
 
 os.environ["WANDB_SILENT"] = "True"
 weave_logger = logging.getLogger("weave")
-# Let the specific application configure the level if needed
-# weave_logger.setLevel(logging.ERROR) # Removed default level setting
-
-logger = logging.getLogger(__name__)
 
 
 # Define a handler to redirect logs
@@ -187,5 +181,5 @@ def get_rich_logger(name: str) -> logging.Logger:
         logger.handlers.clear()
     logger.addHandler(_rich_handler)
     logger.setLevel(logging.DEBUG)
-    logger.propagate = False
+    logger.propagate = True
     return logger

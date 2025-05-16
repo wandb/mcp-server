@@ -6,38 +6,6 @@ A Model Context Protocol (MCP) server for querying [Weights & Biases Weave](http
 - query W&B Weave traces, evaluations and datasets
 - write text and charts to W&B Reports
 
-## Available tools
-
-
-### wandb
--  **`query_wandb_gql_tool`**: Execute an arbitrary GraphQL query against wandb experiment tracking data including Projects, Runs, Artifacts, Sweeps, Reports, etc.
-  
-### Weave
-- **`query_weave_traces_tool`**: Queries Weave traces with powerful filtering, sorting, and pagination options.
-  Returns either complete trace data or just metadata to avoid overwhelming the LLM context window.
-
-- **`count_weave_traces_tool`**: Efficiently counts Weave traces matching given filters without returning the trace data.
-  Returns both total trace count and root traces count to understand project scope before querying.
-
-### Saving Anaysis
-- **`create_wandb_report_tool`**: Creates a new W&B Report with markdown text and HTML-rendered visualizations.
-  Provides a permanent, shareable document for saving analysis findings and generated charts.
-
-## Usage Tips
-
-- When asking broad, general questions such as "what are my best performing runs/evaluations?" its always a good idea to ask the LLM to check that it retrieved all the available runs. Sometimes there can be a tendency from the LLMs to only retrieve the latest runs or the last X runs.
-
-## Usage
-
-Ensure you specify the W&B Entity and W&B Project to the LLM/MCP Client.
-
-Example query for Claude Desktop:
-
-```markdown
-how many openai.chat traces in the wandb-applied-ai-team/mcp-tests weave project? plot the most recent 5 traces over time and save to a report
-```
-
-
 ## Installation
 We provide a helper utility for easily installing the Weights and Biases MCP Server into applications that use a JSON server spec. Please first [install `uv`](https://docs.astral.sh/uv/getting-started/installation/), typically by running `curl -LsSf https://astral.sh/uv/install.sh | sh` on your machine.
 
@@ -70,14 +38,44 @@ If you don't want to use the helper above, add the following to your MCP client 
       "args": [
         "--from",
         "git+https://github.com/wandb/wandb-mcp-server",
-        "mcp_server"
+        "wandb_mcp_server"
       ]
     }
   }
 }
 ```
 
-### Running from Source
+## Available tools
+
+### wandb
+-  **`query_wandb_gql_tool`**: Execute an arbitrary GraphQL query against wandb experiment tracking data including Projects, Runs, Artifacts, Sweeps, Reports, etc.
+  
+### Weave
+- **`query_weave_traces_tool`**: Queries Weave traces with powerful filtering, sorting, and pagination options.
+  Returns either complete trace data or just metadata to avoid overwhelming the LLM context window.
+
+- **`count_weave_traces_tool`**: Efficiently counts Weave traces matching given filters without returning the trace data.
+  Returns both total trace count and root traces count to understand project scope before querying.
+
+### Saving Anaysis
+- **`create_wandb_report_tool`**: Creates a new W&B Report with markdown text and HTML-rendered visualizations.
+  Provides a permanent, shareable document for saving analysis findings and generated charts.
+
+## Usage Tips
+
+- When asking broad, general questions such as "what are my best performing runs/evaluations?" its always a good idea to ask the LLM to check that it retrieved all the available runs. Sometimes there can be a tendency from the LLMs to only retrieve the latest runs or the last X runs.
+
+## Usage
+
+Ensure you specify the W&B Entity and W&B Project to the LLM/MCP Client.
+
+Example query for Claude Desktop:
+
+```markdown
+how many openai.chat traces in the wandb-applied-ai-team/mcp-tests weave project? plot the most recent 5 traces over time and save to a report
+```
+
+## Running from Source
 
 ```bash
 git clone https://github.com/wandb/wandb-mcp-server.git
@@ -162,6 +160,10 @@ ANTHROPIC_API_KEY=<my_key>
 Run a single test using pytest with 10 workers
 ```
 uv run pytest -s -n 10 tests/test_query_wandb_gql.py
-uv run pytest -s -n 10 tests/test_count_tools.py
-uv run pytest -s -n 10 tests/test_query_wandbot.py
+```
+
+Turn on debug logging for a single sample in 1 test file
+
+```
+pytest -s -n 1 "tests/test_query_weave_traces.py::test_query_weave_trace[longest_eval_most_expensive_child]" -v --log-cli-level=DEBUG
 ```

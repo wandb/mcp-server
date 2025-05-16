@@ -36,4 +36,7 @@ def setup_weave(request):
     # Optional: Teardown logic if needed
     # def fin():
     #     logger.info("Tearing down Weave session (if necessary)...")
-    # request.addfinalizer(fin) 
+    # request.addfinalizer(fin)
+
+def pytest_configure(config):
+    config.option.asyncio_default_fixture_loop_scope = "function" 

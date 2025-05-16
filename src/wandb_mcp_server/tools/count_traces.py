@@ -7,9 +7,10 @@ from typing import Any, Dict
 import requests
 
 from wandb_mcp_server.tools.query_weave import _build_query_expression
-from wandb_mcp_server.tools.tools_utils import get_retry_session
+from wandb_mcp_server.mcp_tools.tools_utils import get_retry_session
+from wandb_mcp_server.utils import get_rich_logger
 
-logger = logging.getLogger(__name__)
+logger = get_rich_logger(__name__)
 
 COUNT_WEAVE_TRACES_TOOL_DESCRIPTION = """count Weave traces and return the total storage \
 size in bytes for the given filters.
