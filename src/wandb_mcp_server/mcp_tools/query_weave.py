@@ -397,4 +397,4 @@ async def query_paginated_weave_traces(
         # Convert back to QueryResult
         result = QueryResult.model_validate(result_dict)
 
-    return result
+    return result.model_dump_json()
