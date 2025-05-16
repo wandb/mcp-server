@@ -12,10 +12,14 @@ We provide a helper utility for easily installing the Weights and Biases MCP Ser
 From there, you can use the `add_to_client` helper to add the server to your MCP client - inspired by the OpenMCP Server Registry [`add-to-client` pattern](https://www.open-mcp.org/servers)
 
 ### Cursor project (run from the project dir):
-`uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client .cursor/mcp.json && uvx wandb login`
+```
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client .cursor/mcp.json && uvx wandb login
+```
 
 ### Cursor global (applies to all projects):
-`uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.cursor/mcp.json && uvx wandb login`
+```
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.cursor/mcp.json && uvx wandb login
+```
 
 ### Claude desktop:
 Ensure `uv` is installed, you might have to use brew to install instead:
@@ -25,7 +29,10 @@ brew install uv
 ```
 
 then:
-`uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library/Application\ Support/Claude/claude_desktop_config.json && uvx wandb login`
+
+```
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library/Application\ Support/Claude/claude_desktop_config.json && uvx wandb login
+```
 
 ### Manually
 If you don't want to use the helper above, add the following to your MCP client config manually:
