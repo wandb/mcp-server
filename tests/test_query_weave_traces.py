@@ -43,7 +43,7 @@ class DateTimeEncoder(json.JSONEncoder):
 # Logging & env guards
 # -----------------------------------------------------------------------------
 
-logger = get_rich_logger(__name__)
+logger = get_rich_logger(__name__, propagate=True)
 
 # Environment – skip live tests if not configured
 WANDB_API_KEY = os.getenv("WANDB_API_KEY")

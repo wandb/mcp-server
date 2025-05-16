@@ -174,7 +174,7 @@ def merge_metadata(metadata_list: List[Dict]) -> Dict:
     return merged
 
 
-def get_rich_logger(name: str) -> logging.Logger:
+def get_rich_logger(name: str, propagate: bool = False) -> logging.Logger:
     """Configure and return a logger with RichHandler."""
     logger = logging.getLogger(name)
     _rich_handler = RichHandler(
@@ -184,5 +184,5 @@ def get_rich_logger(name: str) -> logging.Logger:
         logger.handlers.clear()
     logger.addHandler(_rich_handler)
     logger.setLevel(logging.DEBUG)
-    logger.propagate = True
+    logger.propagate = propagate
     return logger
