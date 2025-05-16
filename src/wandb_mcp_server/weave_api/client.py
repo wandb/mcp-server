@@ -14,7 +14,7 @@ import requests
 from requests.exceptions import RetryError
 
 from wandb_mcp_server.tools.tools_utils import get_retry_session
-from wandb_mcp_server.utils import get_rich_logger
+from wandb_mcp_server.utils import get_rich_logger, _wandb_api_key_via_netrc
 
 logger = get_rich_logger(__name__)
 
@@ -38,6 +38,15 @@ class WeaveApiClient:
             timeout: Timeout for HTTP requests in seconds.
         """
         self.api_key = api_key or os.environ.get("WANDB_API_KEY")
+        
+        # If API key not found in args or env, try to get from .netrc
+        if not self.api_key:
+            netrc_api_key = _wandb_api_key_via_netrc()
+            if netrc_api_key:
+                self.api_key = netrc_api_key
+                # Also set in environment for other components
+                os.environ["WANDB_API_KEY"] = netrc_api_key
+                
         if not self.api_key:
             raise ValueError("API key not found. Please provide an API key or set WANDB_API_KEY environment variable.")
 
