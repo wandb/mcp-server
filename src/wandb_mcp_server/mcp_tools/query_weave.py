@@ -236,17 +236,17 @@ Returns:
 def query_traces(
     entity_name: str,
     project_name: str,
-    filters: Optional[Dict[str, Any]] = None,
+    filters: Dict[str, Any] = {},
     sort_by: str = "started_at",
     sort_direction: str = "desc",
-    limit: Optional[int] = None,
+    limit: int | None = 100,
     offset: int = 0,
     include_costs: bool = True,
     include_feedback: bool = True,
-    columns: Optional[List[str]] = None,
-    expand_columns: Optional[List[str]] = None,
-    api_key: Optional[str] = None,
-    query_expr: Optional[Any] = None,  # We ignore this in the new implementation
+    columns: List[str] = [],
+    expand_columns: List[str] = [],
+    api_key: str = "",
+    query_expr: Any = None,  # We ignore this in the new implementation
     request_timeout: int = 10,
     retries: int = 3,
 ) -> List[Dict[str, Any]]:

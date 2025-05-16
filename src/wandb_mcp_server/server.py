@@ -62,7 +62,7 @@ mcp = FastMCP("weave-mcp-server")
 async def query_weave_traces_tool(
     entity_name: str,
     project_name: str,
-    filters: Dict[str, Any] | None = None,
+    filters: Dict = {},
     sort_by: str = "started_at",
     sort_direction: str = "desc",
     limit: int | None = None,
