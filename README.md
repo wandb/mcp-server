@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/wandb/wandb/refs/heads/main/assets/logo-dark.svg#gh-dark-mode-only" width="600" alt="Weights & Biases" />
+  <img src="https://raw.githubusercontent.com/wandb/wandb/refs/heads/main/assets/logo-light.svg#gh-light-mode-only" width="600" alt="Weights & Biases" />
+</p>
+
 # Weights & Biases MCP Server
 
 A Model Context Protocol (MCP) server for querying [Weights & Biases Weave](https://weave-docs.wandb.ai/) traces. This server allows a MCP Client to:
