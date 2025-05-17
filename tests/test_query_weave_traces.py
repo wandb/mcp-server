@@ -431,8 +431,11 @@ async def test_query_weave_trace(sample, weave_results_dir):
         final_log_data_for_file = current_attempt_log_data
 
         try:
+            # Common input logging for both multi-turn and single-turn
+            current_attempt_log_data["inputs"]["test_query"] = query_text
+            current_attempt_log_data["inputs"]["expected_value"] = str(expected_output)
+
             if max_turns > 1:
-                current_attempt_log_data["inputs"]["original_query"] = query_text
                 current_attempt_log_data["inputs"]["max_turns"] = max_turns
                 current_attempt_log_data["inputs"]["test_type"] = sample.get(
                     "test_type"
@@ -520,7 +523,6 @@ async def test_query_weave_trace(sample, weave_results_dir):
                 current_attempt_log_data["score"] = True
 
             else:
-                current_attempt_log_data["inputs"]["original_query"] = query_text
                 messages = [{"role": "user", "content": query_text}]
                 response = call_anthropic(
                     model_name="claude-3-7-sonnet-20250219",
@@ -559,6 +561,9 @@ async def test_query_weave_trace(sample, weave_results_dir):
                 extractor = sample.get("extract")
                 if callable(extractor):
                     actual_extracted_value_for_log = extractor(tool_result_dict)
+                    if isinstance(current_attempt_log_data["output"], dict):
+                        current_attempt_log_data["output"]["extracted_value_for_assertion"] = actual_extracted_value_for_log
+                    
                     if sample.get("check_latency_value"):
                         assert actual_extracted_value_for_log is not None, (
                             "No latency value extracted."
@@ -599,11 +604,19 @@ async def test_query_weave_trace(sample, weave_results_dir):
                 f"Assertion FAILED for test {test_name} (Index: {test_case_index}) on attempt {retry_num + 1}/{MAX_RETRIES}: {e}"
             )
             current_attempt_log_data["score"] = False
+            # Ensure output is a dict before adding error info, if it's not already set or is a string
+            if not isinstance(current_attempt_log_data["output"], dict):
+                current_attempt_log_data["output"] = {}
             current_attempt_log_data["output"]["assertion_error"] = str(e)
+
             if actual_extracted_value_for_log is not None:
                 current_attempt_log_data["output"]["extracted_value_at_failure"] = (
                     actual_extracted_value_for_log
                 )
+                # Optionally, also add it as 'extracted_value_for_assertion' during failure for consistency
+                # if 'extracted_value_for_assertion' not in current_attempt_log_data["output"]:
+                #    current_attempt_log_data["output"]["extracted_value_for_assertion"] = actual_extracted_value_for_log
+
             if retry_num >= MAX_RETRIES - 1:
                 logger.error(
                     f"Test {test_name} (Index: {test_case_index}) FAILED all {MAX_RETRIES} retries."
@@ -615,6 +628,9 @@ async def test_query_weave_trace(sample, weave_results_dir):
                 f"Network error for test {test_name} (Index: {test_case_index}) on attempt {retry_num + 1}/{MAX_RETRIES}, retrying: {e}"
             )
             current_attempt_log_data["score"] = False
+            # Ensure output is a dict
+            if not isinstance(current_attempt_log_data["output"], dict):
+                current_attempt_log_data["output"] = {}
             current_attempt_log_data["output"]["network_error"] = str(e)
             if retry_num >= MAX_RETRIES - 1:
                 logger.error(
@@ -629,6 +645,9 @@ async def test_query_weave_trace(sample, weave_results_dir):
                 exc_info=True,
             )
             current_attempt_log_data["score"] = False
+            # Ensure output is a dict
+            if not isinstance(current_attempt_log_data["output"], dict):
+                current_attempt_log_data["output"] = {}
             current_attempt_log_data["output"]["exception"] = str(e)
             if retry_num >= MAX_RETRIES - 1:
                 logger.error(
@@ -647,6 +666,26 @@ async def test_query_weave_trace(sample, weave_results_dir):
         final_log_data_for_file["metadata"]["final_attempt_number_for_json"] = (
             final_log_data_for_file["metadata"]["retry_attempt"]
         )
+
+        # Stringify specific complex fields to be logged as JSON strings
+        if "inputs" in final_log_data_for_file and isinstance(final_log_data_for_file["inputs"], dict):
+            if "tool_input_from_conversation" in final_log_data_for_file["inputs"] and \
+               isinstance(final_log_data_for_file["inputs"]["tool_input_from_conversation"], dict):
+                final_log_data_for_file["inputs"]["tool_input_from_conversation"] = json.dumps(
+                    final_log_data_for_file["inputs"]["tool_input_from_conversation"], indent=2
+                )
+
+        if "output" in final_log_data_for_file and isinstance(final_log_data_for_file["output"], dict):
+            # Stringify the main output, using DateTimeEncoder if it might contain datetime objects
+            try:
+                final_log_data_for_file["output"] = json.dumps(
+                    final_log_data_for_file["output"], indent=2, cls=DateTimeEncoder
+                )
+            except Exception as e:
+                logger.error(f"Failed to stringify output field: {e}")
+                # Fallback or decide how to handle - for now, leave as is if dump fails
+                pass
+
         unique_file_id = str(uuid.uuid4())
         worker_id = os.environ.get("PYTEST_XDIST_WORKER", "main")
         file_name = f"test_idx_{test_case_index}_{test_name}_w_{worker_id}_attempt_{final_log_data_for_file['metadata']['final_attempt_number_for_json']}_{('pass' if final_log_data_for_file['score'] else 'fail')}_{unique_file_id}.json"

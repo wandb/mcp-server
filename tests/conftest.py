@@ -251,7 +251,6 @@ def pytest_sessionfinish(session):
                     inputs = test_data.get('inputs', {})
                     output = test_data.get('output', {})
                     score_value = test_data.get('score', False)
-                    scorer_name = test_data.get('scorer_name', 'test_outcome')
                     metrics_data = test_data.get('metrics', {})
                     execution_latency = metrics_data.get("execution_latency_seconds")
 
@@ -261,7 +260,10 @@ def pytest_sessionfinish(session):
                     if 'source_test_file_name' in metadata: current_inputs['_source_test_file_name'] = metadata['source_test_file_name']
 
                     pred_logger = session_eval_logger.log_prediction(inputs=current_inputs, output=output)
-                    pred_logger.log_score(scorer=scorer_name, score=bool(score_value))
+                    
+                    # Log the primary pass/fail status with a consistent scorer name
+                    pred_logger.log_score(scorer="overall_test_status", score=bool(score_value))
+
                     if execution_latency is not None:
                         pred_logger.log_score(scorer="execution_latency_seconds", score=float(execution_latency))
                         all_latencies.append(float(execution_latency))
