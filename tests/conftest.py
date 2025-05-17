@@ -55,6 +55,7 @@ import json
 import glob
 import shutil
 from datetime import datetime
+from collections import defaultdict
 
 # Attempt to disable Weave tracing in worker processes by default.
 os.environ["WEAVE_DISABLED"] = "true"
@@ -160,7 +161,7 @@ def pytest_sessionfinish(session):
                 logger.error(f"(ID: {invocation_id}) Generic error initializing Weave: {e}. Skipping summary logging.", exc_info=True)
                 return
 
-            all_test_data = []
+            all_test_data_raw = []
             json_files_found = []
             base_tmp_dir_for_master = None
 
@@ -194,100 +195,116 @@ def pytest_sessionfinish(session):
                 try:
                     with open(json_file_path, 'r') as f:
                         data = json.load(f)
-                        all_test_data.append(data)
+                        all_test_data_raw.append(data)
                 except Exception as e:
                     logger.error(f"(ID: {invocation_id}) Master error reading/parsing {json_file_path}: {e}", exc_info=True)
                     continue
 
-            if not all_test_data:
+            if not all_test_data_raw:
                 logger.info(f"(ID: {invocation_id}) Master: No valid data parsed from JSON files.")
                 return
 
-            logger.info(f"(ID: {invocation_id}) Master DEBUG: Items in all_test_data: {len(all_test_data)}")
-            if all_test_data:
-                logger.info(f"(ID: {invocation_id}) Master DEBUG: Metadata of first item: {all_test_data[0].get('metadata')}")
+            # Group data by source_test_file_name
+            grouped_test_data = defaultdict(list)
+            for test_data_item in all_test_data_raw:
+                source_file = test_data_item.get('metadata', {}).get('source_test_file_name', 'unknown_source_file')
+                grouped_test_data[source_file].append(test_data_item)
 
-            run_timestamp = int(time.time())
-            git_commit_id_from_tests = "unknown_git_commit"
-            source_test_file_name_cleaned = "unknown_file"
+            logger.info(f"(ID: {invocation_id}) Master: Processing {len(grouped_test_data)} groups of test data based on source file.")
 
-            first_valid_metadata = all_test_data[0].get('metadata', {})
-            if first_valid_metadata.get('git_commit_id'):
-                git_commit_id_from_tests = first_valid_metadata['git_commit_id']
-            if first_valid_metadata.get('source_test_file_name'):
-                raw_file_name = first_valid_metadata['source_test_file_name']
-                source_test_file_name_cleaned = raw_file_name.replace('.py', '').replace('_', '-')
-            
-            overall_eval_name = f"mcp-eval_{source_test_file_name_cleaned}_{git_commit_id_from_tests}_{run_timestamp}_{invocation_id[:8]}"
-            aggregated_dataset_name = f"{source_test_file_name_cleaned}_tests"
+            for source_file_name, file_specific_test_data in grouped_test_data.items():
+                if not file_specific_test_data:
+                    logger.warning(f"(ID: {invocation_id}) Master: No test data found for source file group '{source_file_name}', skipping.")
+                    continue
 
-            logger.info(f"(ID: {invocation_id}) Master: Logging to Weave Eval: Name='{overall_eval_name}', Commit='{git_commit_id_from_tests}', Dataset='{aggregated_dataset_name}'")
-
-            try:
-                session_eval_logger = EvaluationLogger(
-                    name=overall_eval_name,
-                    model=git_commit_id_from_tests,
-                    dataset=aggregated_dataset_name
-                )
-            except Exception as e:
-                logger.error(f"(ID: {invocation_id}) Master: Failed to init EvaluationLogger: {e}.", exc_info=True)
-                return
-
-            total_tests_logged = 0
-            passed_tests_logged = 0
-            all_latencies = []
-
-            for test_data in all_test_data:
-                try:
-                    metadata = test_data.get('metadata', {})
-                    inputs = test_data.get('inputs', {})
-                    output = test_data.get('output', {})
-                    score_value = test_data.get('score', False)
-                    metrics_data = test_data.get('metrics', {})
-                    execution_latency = metrics_data.get("execution_latency_seconds")
-
-                    current_inputs = dict(inputs) # Create a copy to modify
-                    if 'test_case_index' in metadata: current_inputs['_test_case_index'] = metadata['test_case_index']
-                    if 'sample_name' in metadata: current_inputs['_sample_name'] = metadata['sample_name']
-                    if 'source_test_file_name' in metadata: current_inputs['_source_test_file_name'] = metadata['source_test_file_name']
-
-                    score_logger = session_eval_logger.log_prediction(inputs=current_inputs, output=output)
-                    
-                    # Log the primary pass/fail status with a consistent scorer name
-                    score_logger.log_score(scorer="test_passed", score=bool(score_value))
-
-                    if execution_latency is not None:
-                        score_logger.log_score(scorer="execution_latency_seconds", score=float(execution_latency))
-                        all_latencies.append(float(execution_latency))
-                    score_logger.finish()
-                    total_tests_logged += 1
-                    if score_value: passed_tests_logged += 1
-                except Exception as e:
-                    err_example_id = str(metadata.get('test_case_index', metadata.get('sample_name', 'unknown_example')))
-                    logger.error(f"(ID: {invocation_id}) Master: Error logging prediction for '{err_example_id}': {e}", exc_info=True)
-
-            if total_tests_logged > 0:
-                summary_metrics = {
-                    "total_tests_processed_from_files": len(all_test_data),
-                    "total_tests_logged_to_weave": total_tests_logged,
-                    "passed_tests_logged_to_weave": passed_tests_logged,
-                    "pass_rate": (passed_tests_logged / total_tests_logged) if total_tests_logged else 0,
-                    "session_worker_count": str(getattr(session.config.option, 'numprocesses', 'N/A') if hasattr(session.config.option, 'numprocesses') else 'N/A')
-                }
-                if all_latencies:
-                    summary_metrics["avg_execution_latency_seconds"] = sum(all_latencies) / len(all_latencies)
-                    summary_metrics["min_execution_latency_seconds"] = min(all_latencies)
-                    summary_metrics["max_execution_latency_seconds"] = max(all_latencies)
-                    summary_metrics["total_execution_latency_seconds"] = sum(all_latencies)
+                logger.info(f"(ID: {invocation_id}) Master: Processing {len(file_specific_test_data)} tests from file '{source_file_name}'.")
                 
-                logger.info(f"(ID: {invocation_id}) Master: Final Weave summary: {summary_metrics}")
+                # Use metadata from the first test in this group for overall naming
+                first_valid_metadata = file_specific_test_data[0].get('metadata', {})
+                git_commit_id_from_tests = first_valid_metadata.get('git_commit_id', 'unknown_git_commit')
+                
+                # Sanitize source_file_name for use in eval name
+                sanitized_source_name = source_file_name.replace('_', '-')
+                
+                run_timestamp = int(time.time()) # Could also use a shared timestamp if preferred
+                overall_eval_name = f"mcp-eval_{sanitized_source_name}_{git_commit_id_from_tests}_{run_timestamp}_{invocation_id[:8]}"
+                aggregated_dataset_name = f"{sanitized_source_name}_tests"
+
+                logger.info(f"(ID: {invocation_id}) Master: Logging to Weave Eval for file '{source_file_name}': Name='{overall_eval_name}', Commit='{git_commit_id_from_tests}', Dataset='{aggregated_dataset_name}'")
+
                 try:
-                    session_eval_logger.log_summary(summary_metrics)
-                    logger.info(f"(ID: {invocation_id}) Master: Successfully logged summary for '{overall_eval_name}'.")
+                    session_eval_logger = EvaluationLogger(
+                        name=overall_eval_name,
+                        model=git_commit_id_from_tests, # Or a more generic model identifier if preferred
+                        dataset=aggregated_dataset_name
+                    )
                 except Exception as e:
-                    logger.error(f"(ID: {invocation_id}) Master: Failed to log summary for '{overall_eval_name}': {e}", exc_info=True)
-            else:
-                logger.info(f"(ID: {invocation_id}) Master: No tests logged to Weave, skipping summary.")
+                    logger.error(f"(ID: {invocation_id}) Master: Failed to init EvaluationLogger for '{source_file_name}': {e}.", exc_info=True)
+                    continue # Skip to the next file group
+
+                total_tests_logged = 0
+                passed_tests_logged = 0
+                all_latencies = []
+
+                for test_data in file_specific_test_data: # Iterate over tests for the current file
+                    try:
+                        metadata = test_data.get('metadata', {})
+                        inputs = test_data.get('inputs', {})
+                        output = test_data.get('output', {})
+                        score_value = test_data.get('score', False)
+                        metrics_data = test_data.get('metrics', {})
+                        execution_latency = metrics_data.get("execution_latency_seconds")
+
+                        current_inputs = dict(inputs) 
+                        if 'test_case_index' in metadata: current_inputs['_test_case_index'] = metadata['test_case_index']
+                        if 'sample_name' in metadata: current_inputs['_sample_name'] = metadata['sample_name']
+                        # _source_test_file_name is already known from the grouping key, but can be logged per prediction too
+                        current_inputs['_source_test_file_name'] = metadata.get('source_test_file_name', source_file_name)
+                        current_inputs['_original_test_query_text'] = metadata.get('test_query_text', 'N/A') # Example of adding more metadata
+
+                        score_logger = session_eval_logger.log_prediction(inputs=current_inputs, output=output)
+                        
+                        score_logger.log_score(scorer="test_passed", score=bool(score_value))
+
+                        if execution_latency is not None:
+                            score_logger.log_score(scorer="execution_latency_seconds", score=float(execution_latency))
+                            all_latencies.append(float(execution_latency))
+                        
+                        # Log other scores if present (e.g., from a 'scores' list in metrics_data or test_data)
+                        # Example:
+                        # other_scores = test_data.get('other_scores', []) # Assuming 'other_scores': [{'scorer': 'name', 'score': val}]
+                        # for s in other_scores:
+                        #    if 'scorer' in s and 'score' in s:
+                        #        score_logger.log_score(scorer=s['scorer'], score=s['score'])
+                        
+                        score_logger.finish()
+                        total_tests_logged += 1
+                        if score_value: passed_tests_logged += 1
+                    except Exception as e:
+                        err_example_id = str(metadata.get('test_case_index', metadata.get('sample_name', 'unknown_example')))
+                        logger.error(f"(ID: {invocation_id}) Master: Error logging prediction for '{err_example_id}' from file '{source_file_name}': {e}", exc_info=True)
+
+                if total_tests_logged > 0:
+                    summary_metrics = {
+                        "count_tests_logged": total_tests_logged,
+                        "pass_rate": (passed_tests_logged / total_tests_logged) if total_tests_logged else 0,
+                        "session_worker_count": str(getattr(session.config.option, 'numprocesses', 'N/A') if hasattr(session.config.option, 'numprocesses') else 'N/A')
+                    }
+                    if all_latencies:
+                        summary_metrics["avg_execution_latency_s"] = sum(all_latencies) / len(all_latencies)
+                        summary_metrics["min_execution_latency_s"] = min(all_latencies)
+                        summary_metrics["max_execution_latency_s"] = max(all_latencies)
+                        summary_metrics["total_execution_latency_s"] = sum(all_latencies)
+                    
+                    logger.info(f"(ID: {invocation_id}) Master: Final Weave summary for '{overall_eval_name}': {summary_metrics}")
+                    try:
+                        session_eval_logger.log_summary(summary_metrics)
+                        logger.info(f"(ID: {invocation_id}) Master: Successfully logged summary for '{overall_eval_name}'.")
+                    except Exception as e:
+                        logger.error(f"(ID: {invocation_id}) Master: Failed to log summary for '{overall_eval_name}': {e}", exc_info=True)
+                else:
+                    logger.info(f"(ID: {invocation_id}) Master: No tests logged to Weave for '{overall_eval_name}', skipping summary.")
+            # End of loop for grouped_test_data
 
         finally:
             if original_weave_disabled_env is None:
