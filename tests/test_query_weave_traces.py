@@ -199,7 +199,7 @@ TEST_SAMPLES = [
         "question": "Show me the *full* trace data for call `{call_id}` in `{entity_name}/{project_name}`.",
         "expected_output": baseline_result["metadata"],
         "extract": lambda r: r["metadata"],
-        "max_turns": 1
+        "max_turns": 1,
     },
     {
         "index": 1,
@@ -207,7 +207,7 @@ TEST_SAMPLES = [
         "question": "What's the `op_name` for trace `{call_id}` in project `{project_name}` (entity `{entity_name}`)?",
         "expected_output": _op_name,
         "extract": lambda r: r["traces"][0].get("op_name"),
-        "max_turns": 1
+        "max_turns": 1,
     },
     {
         "index": 2,
@@ -215,7 +215,7 @@ TEST_SAMPLES = [
         "question": "Give me the display name of call `{call_id}` under `{entity_name}/{project_name}`.",
         "expected_output": _display_name,
         "extract": lambda r: r["traces"][0].get("display_name"),
-        "max_turns": 1
+        "max_turns": 1,
     },
     {
         "index": 3,
@@ -223,7 +223,7 @@ TEST_SAMPLES = [
         "question": "Did call `{call_id}` end with an exception in `{entity_name}/{project_name}`?",
         "expected_output": _has_exception,
         "extract": lambda r: (r["traces"][0].get("exception") is not None),
-        "max_turns": 1
+        "max_turns": 1,
     },
     {
         "index": 4,
@@ -232,7 +232,7 @@ TEST_SAMPLES = [
         "expected_output": _status,
         "extract": lambda r: r["traces"][0].get("status")
         or r["traces"][0].get("summary", {}).get("weave", {}).get("status"),
-        "max_turns": 1
+        "max_turns": 1,
     },
     {
         "index": 5,
@@ -241,7 +241,7 @@ TEST_SAMPLES = [
         "expected_output": _latency,
         "extract": lambda r: r["traces"][0].get("latency_ms"),
         "check_latency_value": True,  # Add flag to indicate we just need to check for a valid value
-        "max_turns": 1
+        "max_turns": 1,
     },
     {
         "index": 6,
@@ -249,7 +249,7 @@ TEST_SAMPLES = [
         "question": "Which parent call ID does `{call_id}` have in `{entity_name}/{project_name}`?",
         "expected_output": _parent_id,
         "extract": lambda r: r["traces"][0].get("parent_id"),
-        "max_turns": 1
+        "max_turns": 1,
     },
     {
         "index": 7,
@@ -257,7 +257,7 @@ TEST_SAMPLES = [
         "question": "What unix timestamp did call `{call_id}` start at in `{entity_name}/{project_name}`?",
         "expected_output": _started_at,
         "extract": lambda r: r["traces"][0].get("started_at"),
-        "max_turns": 1
+        "max_turns": 1,
     },
     {
         "index": 8,
@@ -266,7 +266,7 @@ TEST_SAMPLES = [
         "expected_output": baseline_result["metadata"],
         "extract": lambda r: r["metadata"],
         "expect_metadata_only": True,
-        "max_turns": 1
+        "max_turns": 1,
     },
     {
         "index": 9,
@@ -276,7 +276,7 @@ TEST_SAMPLES = [
         "extract": lambda r: _check_truncated_io(r),
         "check_truncated_io": True,
         "skip_full_compare": True,
-        "max_turns": 1
+        "max_turns": 1,
     },
     {
         "index": 10,
@@ -290,7 +290,7 @@ TEST_SAMPLES = [
         ),
         "skip_full_compare": True,
         "expect_metadata_only": True,
-        "max_turns": 1
+        "max_turns": 1,
     },
     # ---------- Multi-turn test samples ----------
     {
@@ -445,7 +445,9 @@ async def test_query_weave_trace(sample, weave_results_dir):
             try:
                 # Common input logging for both multi-turn and single-turn
                 current_attempt_log_data["inputs"]["test_query"] = query_text
-                current_attempt_log_data["inputs"]["expected_value"] = str(expected_output)
+                current_attempt_log_data["inputs"]["expected_value"] = str(
+                    expected_output
+                )
                 current_attempt_log_data["inputs"]["test_case_index"] = test_case_index
 
                 if max_turns > 1:
@@ -456,36 +458,55 @@ async def test_query_weave_trace(sample, weave_results_dir):
                     current_attempt_log_data["scorer_name"] = "multi_turn_assertion"
 
                     # Unpack the new return values from _run_tool_conversation
-                    tool_input_from_conv, tool_result_dict, llm_text_response, tool_name_from_conv = await _run_tool_conversation(
+                    (
+                        tool_input_from_conv,
+                        tool_result_dict,
+                        llm_text_response,
+                        tool_name_from_conv,
+                    ) = await _run_tool_conversation(
                         query_text,
                         max_turns=max_turns,
                         expected_first_turn_call_id=expected_intermediate_call_id,
                         n_retries=MAX_RETRIES,
                         test_type=sample.get("test_type"),
                     )
-                    current_attempt_log_data["inputs"]["tool_input_from_conversation"] = json.dumps(
-                        tool_input_from_conv, indent=2
-                    )
-                    
-                    # --- Multi-turn: Prepare trace_data with stringified sub-fields --- 
-                    processed_tool_result_dict_multi = dict(tool_result_dict) # Make a copy
-                    if "metadata" in processed_tool_result_dict_multi and isinstance(processed_tool_result_dict_multi["metadata"], dict):
-                        processed_tool_result_dict_multi["metadata"] = json.dumps(processed_tool_result_dict_multi["metadata"], indent=2, cls=DateTimeEncoder)
-                    if "traces" in processed_tool_result_dict_multi and isinstance(processed_tool_result_dict_multi["traces"], list):
-                        processed_tool_result_dict_multi["traces"] = json.dumps(processed_tool_result_dict_multi["traces"], indent=2, cls=DateTimeEncoder)
+                    current_attempt_log_data["inputs"][
+                        "tool_input_from_conversation"
+                    ] = json.dumps(tool_input_from_conv, indent=2)
+
+                    # --- Multi-turn: Prepare trace_data with stringified sub-fields ---
+                    processed_tool_result_dict_multi = dict(
+                        tool_result_dict
+                    )  # Make a copy
+                    if "metadata" in processed_tool_result_dict_multi and isinstance(
+                        processed_tool_result_dict_multi["metadata"], dict
+                    ):
+                        processed_tool_result_dict_multi["metadata"] = json.dumps(
+                            processed_tool_result_dict_multi["metadata"],
+                            indent=2,
+                            cls=DateTimeEncoder,
+                        )
+                    if "traces" in processed_tool_result_dict_multi and isinstance(
+                        processed_tool_result_dict_multi["traces"], list
+                    ):
+                        processed_tool_result_dict_multi["traces"] = json.dumps(
+                            processed_tool_result_dict_multi["traces"],
+                            indent=2,
+                            cls=DateTimeEncoder,
+                        )
 
                     # Structure the output for multi-turn tests
                     current_attempt_log_data["output"] = {
                         "tool_name": tool_name_from_conv,
                         "tool_input": json.dumps(tool_input_from_conv, indent=2),
                         "llm_text_response": llm_text_response,
-                        "trace_data": processed_tool_result_dict_multi # Use the processed version
+                        "trace_data": processed_tool_result_dict_multi,  # Use the processed version
                     }
 
                     # Multi-turn assertions operate on the raw tool_result_dict (before sub-field stringification)
-                    assert "traces" in tool_result_dict and tool_result_dict["traces"], (
-                        "No traces returned (multi-turn)"
-                    )
+                    assert (
+                        "traces" in tool_result_dict and tool_result_dict["traces"]
+                    ), "No traces returned (multi-turn)"
                     trace = tool_result_dict["traces"][0]
                     multi_turn_test_type = sample.get("test_type", "unknown")
                     if multi_turn_test_type == "latency_ms":
@@ -508,7 +529,9 @@ async def test_query_weave_trace(sample, weave_results_dir):
                         )
                         if actual_output_tokens is None or actual_output_tokens == 0:
                             costs = (
-                                trace.get("summary", {}).get("weave", {}).get("costs", {})
+                                trace.get("summary", {})
+                                .get("weave", {})
+                                .get("costs", {})
                             )
                             for model_name, model_data in costs.items():
                                 if "completion_tokens" in model_data:
@@ -583,10 +606,10 @@ async def test_query_weave_trace(sample, weave_results_dir):
                         else tool_result
                     )
 
-                    # --- Single-turn: Extractor and assertions operate on raw tool_result_dict --- 
+                    # --- Single-turn: Extractor and assertions operate on raw tool_result_dict ---
                     extractor = sample.get("extract")
                     if callable(extractor):
-                        actual_extracted_value_for_log = extractor(tool_result_dict) 
+                        actual_extracted_value_for_log = extractor(tool_result_dict)
                         # Assertions use actual_extracted_value_for_log and expected_output
                         if sample.get("check_latency_value"):
                             assert actual_extracted_value_for_log is not None, (
@@ -602,33 +625,53 @@ async def test_query_weave_trace(sample, weave_results_dir):
                                 f"Extractor mismatch: Expected {expected_output}, Got {actual_extracted_value_for_log}."
                             )
                     elif tool_input.get("metadata_only"):
-                        actual_extracted_value_for_log = tool_result_dict["metadata"] # Operates on raw dict
+                        actual_extracted_value_for_log = tool_result_dict[
+                            "metadata"
+                        ]  # Operates on raw dict
                         assert actual_extracted_value_for_log == expected_output
                     else:
-                        pass # No extraction, no assertion based on it
+                        pass  # No extraction, no assertion based on it
 
                     # --- Single-turn: Prepare trace_data with stringified sub-fields for logging ---
-                    processed_tool_result_dict_single = dict(tool_result_dict) # Make a copy
-                    if "metadata" in processed_tool_result_dict_single and isinstance(processed_tool_result_dict_single["metadata"], dict):
-                        processed_tool_result_dict_single["metadata"] = json.dumps(processed_tool_result_dict_single["metadata"], indent=2, cls=DateTimeEncoder)
-                    if "traces" in processed_tool_result_dict_single and isinstance(processed_tool_result_dict_single["traces"], list):
-                        processed_tool_result_dict_single["traces"] = json.dumps(processed_tool_result_dict_single["traces"], indent=2, cls=DateTimeEncoder)
-                            
+                    processed_tool_result_dict_single = dict(
+                        tool_result_dict
+                    )  # Make a copy
+                    if "metadata" in processed_tool_result_dict_single and isinstance(
+                        processed_tool_result_dict_single["metadata"], dict
+                    ):
+                        processed_tool_result_dict_single["metadata"] = json.dumps(
+                            processed_tool_result_dict_single["metadata"],
+                            indent=2,
+                            cls=DateTimeEncoder,
+                        )
+                    if "traces" in processed_tool_result_dict_single and isinstance(
+                        processed_tool_result_dict_single["traces"], list
+                    ):
+                        processed_tool_result_dict_single["traces"] = json.dumps(
+                            processed_tool_result_dict_single["traces"],
+                            indent=2,
+                            cls=DateTimeEncoder,
+                        )
+
                     # Structure the output for single-turn tests for logging
                     structured_output_single_turn = {
                         "tool_name": tool_name,
                         "tool_input": json.dumps(tool_input, indent=2),
                         "llm_text_response": llm_text_response_single_turn,
-                        "trace_data": processed_tool_result_dict_single # Use the processed version
+                        "trace_data": processed_tool_result_dict_single,  # Use the processed version
                     }
                     # Add stringified extracted_value_for_assertion if it exists
                     if actual_extracted_value_for_log is not None:
-                        structured_output_single_turn["extracted_value_for_assertion"] = json.dumps(actual_extracted_value_for_log, cls=DateTimeEncoder)
-                    
+                        structured_output_single_turn[
+                            "extracted_value_for_assertion"
+                        ] = json.dumps(
+                            actual_extracted_value_for_log, cls=DateTimeEncoder
+                        )
+
                     current_attempt_log_data["output"] = structured_output_single_turn
-                    
+
                     if (
-                        "traces" in tool_result_dict # Check raw dict
+                        "traces" in tool_result_dict  # Check raw dict
                         and tool_result_dict["traces"]
                         and not sample.get("skip_full_compare")
                         and not tool_input.get("metadata_only")
@@ -657,9 +700,13 @@ async def test_query_weave_trace(sample, weave_results_dir):
                 if actual_extracted_value_for_log is not None:
                     # If output is already a dict (structured), add to it
                     if isinstance(current_attempt_log_data["output"], dict):
-                         current_attempt_log_data["output"]["extracted_value_at_failure"] = actual_extracted_value_for_log
-                    else: # Should be rare now, but handle if output is not a dict
-                         current_attempt_log_data["output"] = {"extracted_value_at_failure": actual_extracted_value_for_log}
+                        current_attempt_log_data["output"][
+                            "extracted_value_at_failure"
+                        ] = actual_extracted_value_for_log
+                    else:  # Should be rare now, but handle if output is not a dict
+                        current_attempt_log_data["output"] = {
+                            "extracted_value_at_failure": actual_extracted_value_for_log
+                        }
 
                 if retry_num >= MAX_RETRIES - 1:
                     logger.error(
@@ -713,11 +760,22 @@ async def test_query_weave_trace(sample, weave_results_dir):
             )
 
             # Stringify specific complex fields to be logged as JSON strings
-            if "inputs" in final_log_data_for_file and isinstance(final_log_data_for_file["inputs"], dict):
-                if "tool_input_from_conversation" in final_log_data_for_file["inputs"] and \
-                   isinstance(final_log_data_for_file["inputs"]["tool_input_from_conversation"], dict):
-                    final_log_data_for_file["inputs"]["tool_input_from_conversation"] = json.dumps(
-                        final_log_data_for_file["inputs"]["tool_input_from_conversation"], indent=2
+            if "inputs" in final_log_data_for_file and isinstance(
+                final_log_data_for_file["inputs"], dict
+            ):
+                if "tool_input_from_conversation" in final_log_data_for_file[
+                    "inputs"
+                ] and isinstance(
+                    final_log_data_for_file["inputs"]["tool_input_from_conversation"],
+                    dict,
+                ):
+                    final_log_data_for_file["inputs"][
+                        "tool_input_from_conversation"
+                    ] = json.dumps(
+                        final_log_data_for_file["inputs"][
+                            "tool_input_from_conversation"
+                        ],
+                        indent=2,
                     )
 
             unique_file_id = str(uuid.uuid4())
@@ -790,26 +848,37 @@ async def _run_tool_conversation(
                 # Capture details for the current turn's tool call
                 current_tool_name: str
                 current_tool_input_dict: Dict[str, Any]
-                _, current_tool_name, current_tool_input_dict, tool_id = extract_anthropic_tool_use(response)
+                _, current_tool_name, current_tool_input_dict, tool_id = (
+                    extract_anthropic_tool_use(response)
+                )
                 current_llm_text_response = extract_anthropic_text(response)
                 anthropic_success = True
 
                 logger.info(
-                    f"\n{'-' * 80}\nLLM text response (Turn {turn_idx+1}): {current_llm_text_response}\n{'-' * 80}"
+                    f"\n{'-' * 80}\nLLM text response (Turn {turn_idx + 1}): {current_llm_text_response}\n{'-' * 80}"
                 )
-                logger.info(f"Tool name (Turn {turn_idx+1}): {current_tool_name}\n{'-' * 80}")
                 logger.info(
-                    f"Tool input (Turn {turn_idx+1}):\\n{json.dumps(current_tool_input_dict, indent=2)}\\n\\n{'-' * 80}"
+                    f"Tool name (Turn {turn_idx + 1}): {current_tool_name}\n{'-' * 80}"
+                )
+                logger.info(
+                    f"Tool input (Turn {turn_idx + 1}):\\n{json.dumps(current_tool_input_dict, indent=2)}\\n\\n{'-' * 80}"
                 )
 
                 # For the second turn of tests, ensure necessary columns are included (example modification)
-                if turn_idx == 1: # This is an example, real logic for column adjustment might be more complex
+                if (
+                    turn_idx == 1
+                ):  # This is an example, real logic for column adjustment might be more complex
                     if "columns" in current_tool_input_dict:
-                        if test_type == "token_count" and "summary" not in current_tool_input_dict["columns"]:
+                        if (
+                            test_type == "token_count"
+                            and "summary" not in current_tool_input_dict["columns"]
+                        ):
                             current_tool_input_dict["columns"].append("summary")
                         # Add other similar column adjustments as needed
-                
-                executed_tool_input = current_tool_input_dict # This is what's passed to the tool
+
+                executed_tool_input = (
+                    current_tool_input_dict  # This is what's passed to the tool
+                )
 
             except Exception as e:
                 anthropic_retry += 1
@@ -828,7 +897,9 @@ async def _run_tool_conversation(
         )
 
         # Execute the tool with retry logic
-        executed_tool_input["retries"] = n_retries # Use the input dict for the *current* execution
+        executed_tool_input["retries"] = (
+            n_retries  # Use the input dict for the *current* execution
+        )
 
         weave_retry = 0
         weave_success = False
@@ -836,7 +907,9 @@ async def _run_tool_conversation(
         while not weave_success and weave_retry < n_retries:
             try:
                 # Use current_tool_name and executed_tool_input for the current tool call
-                executed_tool_result = await available_tools[current_tool_name]["function"](**executed_tool_input)
+                executed_tool_result = await available_tools[current_tool_name][
+                    "function"
+                ](**executed_tool_input)
                 weave_success = True
             except Exception as e:
                 weave_retry += 1
@@ -855,7 +928,9 @@ async def _run_tool_conversation(
             # Update final state variables after successful execution of the current tool
             final_tool_input = executed_tool_input
             final_tool_result = executed_tool_result
-            final_llm_text_response = current_llm_text_response # LLM text that *led* to this executed tool
+            final_llm_text_response = (
+                current_llm_text_response  # LLM text that *led* to this executed tool
+            )
             final_tool_name = current_tool_name
 
         # Optional intermediate check (only on first turn)
@@ -895,8 +970,8 @@ async def _run_tool_conversation(
                     {
                         "type": "tool_use",
                         "id": tool_id,
-                        "name": current_tool_name, # Use current turn's tool name
-                        "input": current_tool_input_dict, # Use LLM's proposed input for this turn
+                        "name": current_tool_name,  # Use current turn's tool name
+                        "input": current_tool_input_dict,  # Use LLM's proposed input for this turn
                     }
                 ],
             }
@@ -905,7 +980,11 @@ async def _run_tool_conversation(
                 get_anthropic_tool_result_message(tool_result_dict_for_msg, tool_id)
             )
 
-    assert final_tool_input is not None and final_tool_result is not None and final_tool_name is not None
+    assert (
+        final_tool_input is not None
+        and final_tool_result is not None
+        and final_tool_name is not None
+    )
 
     # Convert final_tool_result to dict if it's a Pydantic model
     final_tool_result_dict = (
@@ -914,7 +993,12 @@ async def _run_tool_conversation(
         else final_tool_result
     )
 
-    return final_tool_input, final_tool_result_dict, final_llm_text_response, final_tool_name
+    return (
+        final_tool_input,
+        final_tool_result_dict,
+        final_llm_text_response,
+        final_tool_name,
+    )
 
 
 # -----------------------------------------------------------------------------
