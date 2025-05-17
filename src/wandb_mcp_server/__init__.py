@@ -12,4 +12,4 @@ from .query_weave import query_traces, get_weave_trace_server
 from .add_to_client import add_to_client_cli
 
 # Define what gets imported with "from weave_mcp_server import *"
-__all__ = ["mcp", "cli", "query_traces", "get_weave_trace_server", "add_to_client_cli"] 
+__all__ = ["mcp", "cli", "query_traces", "get_weave_trace_server", "add_to_client_cli"]

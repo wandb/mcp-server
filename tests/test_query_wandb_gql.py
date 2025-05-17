@@ -324,4 +324,4 @@ Please re-analyze the original query ("{query_text}") and the result from your p
     # If we reach here, it means the correctness check passed within the allowed attempts.
     logger.info("--- Test passed within allowed attempts. ---")
 
-    # --- Removed the old assertion logic that was outside the try/loop block --- 
+    # --- Removed the old assertion logic that was outside the try/loop block ---
