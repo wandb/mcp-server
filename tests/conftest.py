@@ -67,6 +67,8 @@ def weave_results_dir(tmp_path_factory):
     yield results_dir
 
 def pytest_sessionfinish(session):
+    with open(f"session_finish_log_{str(uuid.uuid4())}.txt", "w") as f:
+        f.write(f"pytest_sessionfinish invoked with ID: {str(uuid.uuid4())} at {time.time()}\n")
     invocation_id = str(uuid.uuid4()) 
     logger.info(f"pytest_sessionfinish invoked (ID: {invocation_id})")
 
