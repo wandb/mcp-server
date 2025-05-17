@@ -11,28 +11,29 @@ import json
 import os
 import time
 import uuid
-from typing import Any, Dict, List
 from datetime import datetime
+from typing import Any, Dict, List
 
 import pytest
+
+from tests.anthropic_test_utils import (
+    call_anthropic,
+    check_correctness_tool,
+    extract_anthropic_tool_use,
+)
 from wandb_mcp_server.mcp_tools.query_wandb_gql import (
     QUERY_WANDB_GQL_TOOL_DESCRIPTION,
     query_paginated_wandb_gql,
 )
 from wandb_mcp_server.mcp_tools.tools_utils import generate_anthropic_tool_schema
-from tests.anthropic_test_utils import (
-    call_anthropic,
-    extract_anthropic_tool_use,
-    check_correctness_tool,
-)
-from wandb_mcp_server.utils import get_rich_logger, get_git_commit
-
+from wandb_mcp_server.utils import get_git_commit, get_rich_logger
 
 # Root logging configuration
 logger = get_rich_logger(__name__)
 
 # weave.init("wandb-applied-ai-team/wandb-mcp-server-test-outputs")
 # os.environ["WANDB_SILENT"] = "true"
+
 
 # -----------------------------------------------------------------------------
 # Custom JSON encoder for datetime objects (similar to test_query_weave_traces.py)
@@ -44,6 +45,7 @@ class DateTimeEncoder(json.JSONEncoder):
         if isinstance(obj, datetime):
             return obj.isoformat()
         return super().default(obj)
+
 
 # -----------------------------------------------------------------------------
 # Environment guards
@@ -92,19 +94,19 @@ tools: List[Dict[str, Any]] = [available_tools["query_paginated_wandb_gql"]["sch
 # Compute baseline runCount once so that tests have a stable expected value
 # -----------------------------------------------------------------------------
 
-BASELINE_QUERY = (
-    """
+BASELINE_QUERY = """
 query ProjectRunCount($entity: String!, $project: String!) {
   project(name: $project, entityName: $entity) {
     runCount
   }
 }
 """
-)
 BASELINE_VARIABLES = {"entity": TEST_WANDB_ENTITY, "project": TEST_WANDB_PROJECT}
 
 # Compute baseline
-logger.info("Fetching baseline runCount for %s/%s", TEST_WANDB_ENTITY, TEST_WANDB_PROJECT)
+logger.info(
+    "Fetching baseline runCount for %s/%s", TEST_WANDB_ENTITY, TEST_WANDB_PROJECT
+)
 _baseline_result = query_paginated_wandb_gql(BASELINE_QUERY, BASELINE_VARIABLES)
 BASELINE_RUN_COUNT: int = _baseline_result["project"]["runCount"]
 logger.info("Baseline runCount = %s", BASELINE_RUN_COUNT)
@@ -189,16 +191,15 @@ def test_query_wandb_gql(sample, weave_results_dir):
     current_git_commit = get_git_commit()
     git_commit_id = f"commit_{current_git_commit}"
     current_test_file_name = os.path.basename(__file__)
-    
+
     # Find the index of the current sample for unique naming and metadata
     sample_index = -1
     for i, s in enumerate(test_queries):
         if s == sample:
             sample_index = i
             break
-    
-    test_case_name = f"gql_query_{sample_index}_{sample.get('question', 'unknown_question')[:20].replace(' ', '_')}"
 
+    test_case_name = f"gql_query_{sample_index}_{sample.get('question', 'unknown_question')[:20].replace(' ', '_')}"
 
     query_text = sample["question"].format(
         entity_name=TEST_WANDB_ENTITY,
@@ -213,11 +214,11 @@ def test_query_wandb_gql(sample, weave_results_dir):
     max_retries = 1
     last_reasoning = "No correctness check performed yet."
     last_is_correct = False
-    first_call_assistant_response = None # Store the response dict from the first model
-    tool_result = None # Store the result of executing the tool
+    first_call_assistant_response = None  # Store the response dict from the first model
+    tool_result = None  # Store the result of executing the tool
     tool_name_used_in_test = None
     tool_input_used_in_test = None
-    
+
     # Initialize log_data_for_file for the current test sample
     final_log_data_for_file = {
         "metadata": {
@@ -227,17 +228,17 @@ def test_query_wandb_gql(sample, weave_results_dir):
             "source_test_file_name": current_test_file_name,
             "test_query_text": query_text,
             "expected_test_output": str(expected_output),
-            "retry_attempt": 0, # Will be updated in the loop
+            "retry_attempt": 0,  # Will be updated in the loop
             "max_retries_configured": max_retries,
         },
-        "inputs": { # Inputs to the overall test/evaluation
+        "inputs": {  # Inputs to the overall test/evaluation
             "test_query": query_text,
             "expected_value": str(expected_output),
         },
-        "output": {}, # Will store tool output and correctness check details
-        "score": False, # Default to False, updated on success
-        "scorer_name": "gql_correctness_assertion", # Specific scorer for these tests
-        "metrics": {}, # Will store execution_latency_seconds
+        "output": {},  # Will store tool output and correctness check details
+        "score": False,  # Default to False, updated on success
+        "scorer_name": "gql_correctness_assertion",  # Specific scorer for these tests
+        "metrics": {},  # Will store execution_latency_seconds
     }
 
     try:
@@ -251,10 +252,14 @@ def test_query_wandb_gql(sample, weave_results_dir):
             if attempt > 0:
                 # We are retrying. Add the previous assistant response and a user message with feedback.
                 if first_call_assistant_response:
-                    messages_first_call.append(first_call_assistant_response) # Add previous assistant message (contains tool use)
+                    messages_first_call.append(
+                        first_call_assistant_response
+                    )  # Add previous assistant message (contains tool use)
                 else:
                     # Should not happen in retry logic, but defensively handle
-                    logger.warning("Attempting retry, but no previous assistant response found.")
+                    logger.warning(
+                        "Attempting retry, but no previous assistant response found."
+                    )
 
                 # Construct the user message asking for a retry
                 retry_user_message_content = f"""
@@ -267,45 +272,61 @@ The reasoning provided was: "{last_reasoning}".
 
 Please re-analyze the original query ("{query_text}") and the result from your previous attempt, then try generating the 'query_paginated_wandb_gql' tool call again.
 """
-                messages_first_call.append({"role": "user", "content": retry_user_message_content})
+                messages_first_call.append(
+                    {"role": "user", "content": retry_user_message_content}
+                )
 
             # --- First Call: Get the query_paginated_wandb_gql tool use ---
             response = call_anthropic(
                 model_name=MODEL_NAME,
                 messages=messages_first_call,
-                tools=tools, # Provide the GQL tool schema
+                tools=tools,  # Provide the GQL tool schema
             )
-            first_call_assistant_response = response # Store this response for potential next retry
+            first_call_assistant_response = (
+                response  # Store this response for potential next retry
+            )
             _, tool_name, tool_input, _ = extract_anthropic_tool_use(response)
-            
+
             tool_name_used_in_test = tool_name
             tool_input_used_in_test = tool_input
 
-
             logger.info(f"Attempt {attempt + 1}: Tool emitted by model: {tool_name}")
-            logger.info(f"Attempt {attempt + 1}: Tool input: {json.dumps(tool_input, indent=2)}")
+            logger.info(
+                f"Attempt {attempt + 1}: Tool input: {json.dumps(tool_input, indent=2)}"
+            )
 
-            assert tool_name == "query_paginated_wandb_gql", f"Attempt {attempt + 1}: Expected 'query_paginated_wandb_gql', got '{tool_name}'"
+            assert tool_name == "query_paginated_wandb_gql", (
+                f"Attempt {attempt + 1}: Expected 'query_paginated_wandb_gql', got '{tool_name}'"
+            )
 
             # --- Execute the GQL tool ---
             try:
                 tool_result = available_tools[tool_name]["function"](**tool_input)
-                logger.info(f"Attempt {attempt + 1}: Tool result: {json.dumps(tool_result, indent=2, cls=DateTimeEncoder)}") # Log full result
+                logger.info(
+                    f"Attempt {attempt + 1}: Tool result: {json.dumps(tool_result, indent=2, cls=DateTimeEncoder)}"
+                )  # Log full result
             except Exception as e:
-                logger.error(f"Attempt {attempt + 1}: Error executing tool '{tool_name}' with input {tool_input}: {e}", exc_info=True)
-                final_log_data_for_file["output"]["tool_execution_error_details"] = str(e)
+                logger.error(
+                    f"Attempt {attempt + 1}: Error executing tool '{tool_name}' with input {tool_input}: {e}",
+                    exc_info=True,
+                )
+                final_log_data_for_file["output"]["tool_execution_error_details"] = str(
+                    e
+                )
                 # If tool execution fails, we might want to stop retrying for this sample or handle differently.
                 # For now, it will proceed to correctness check which will likely fail or be skipped.
                 # Depending on the error, we might want to `pytest.fail` or `raise` to stop the current attempt.
                 # For this iteration, we'll let it go to the correctness check, which will likely fail it.
                 last_is_correct = False
                 last_reasoning = f"Tool execution failed: {e}"
-                if attempt >= max_retries: # If this was the last attempt
-                    raise # Re-raise the exception to fail the test
-                continue # Skip to next retry attempt
+                if attempt >= max_retries:  # If this was the last attempt
+                    raise  # Re-raise the exception to fail the test
+                continue  # Skip to next retry attempt
 
             # --- Second Call: Perform Correctness Check (Separate Task) ---
-            logger.info(f"\n--- Starting Correctness Check for Attempt {attempt + 1} ---")
+            logger.info(
+                f"\n--- Starting Correctness Check for Attempt {attempt + 1} ---"
+            )
 
             try:
                 # Prepare the prompt for the check - provide all context clearly
@@ -326,98 +347,157 @@ Please re-analyze the original query ("{query_text}") and the result from your p
                 correctness_response = call_anthropic(
                     model_name=CORRECTNESS_MODEL_NAME,
                     messages=messages_check_call,
-                    check_correctness_tool=check_correctness_tool
+                    check_correctness_tool=check_correctness_tool,
                 )
 
-                logger.info(f"Attempt {attempt + 1}: Correctness check response:\n{correctness_response}\n\n")
+                logger.info(
+                    f"Attempt {attempt + 1}: Correctness check response:\n{correctness_response}\n\n"
+                )
 
                 # --- Extract and Validate Correctness Tool Use ---
-                _, check_tool_name, check_tool_input, _ = extract_anthropic_tool_use(correctness_response)
+                _, check_tool_name, check_tool_input, _ = extract_anthropic_tool_use(
+                    correctness_response
+                )
 
-                assert check_tool_name == "check_correctness_tool", f"Attempt {attempt + 1}: Expected correctness tool, got {check_tool_name}"
-                assert "reasoning" in check_tool_input, f"Attempt {attempt + 1}: Correctness tool missing 'reasoning'"
-                assert "is_correct" in check_tool_input, f"Attempt {attempt + 1}: Correctness tool missing 'is_correct'"
+                assert check_tool_name == "check_correctness_tool", (
+                    f"Attempt {attempt + 1}: Expected correctness tool, got {check_tool_name}"
+                )
+                assert "reasoning" in check_tool_input, (
+                    f"Attempt {attempt + 1}: Correctness tool missing 'reasoning'"
+                )
+                assert "is_correct" in check_tool_input, (
+                    f"Attempt {attempt + 1}: Correctness tool missing 'is_correct'"
+                )
 
                 # 2. Extract the data from the input dictionary
                 try:
-                    reasoning_text = check_tool_input['reasoning']
-                    is_correct_flag = check_tool_input['is_correct']
+                    reasoning_text = check_tool_input["reasoning"]
+                    is_correct_flag = check_tool_input["is_correct"]
 
                     # Store the latest results
                     last_reasoning = reasoning_text
                     last_is_correct = is_correct_flag
 
-                    logger.info(f"Attempt {attempt + 1}: Correctness Reasoning: {reasoning_text}")
-                    logger.info(f"Attempt {attempt + 1}: Is Correct according to LLM: {is_correct_flag}")
+                    logger.info(
+                        f"Attempt {attempt + 1}: Correctness Reasoning: {reasoning_text}"
+                    )
+                    logger.info(
+                        f"Attempt {attempt + 1}: Is Correct according to LLM: {is_correct_flag}"
+                    )
 
                     if is_correct_flag:
-                        logger.info(f"--- Correctness check passed on attempt {attempt + 1}. ---")
+                        logger.info(
+                            f"--- Correctness check passed on attempt {attempt + 1}. ---"
+                        )
                         final_log_data_for_file["score"] = True
-                        break # Exit the loop successfully
+                        break  # Exit the loop successfully
 
                     # If not correct, and this is the last attempt, the loop will end naturally.
 
                 except KeyError as e:
-                    logger.error(f"Attempt {attempt + 1}: Missing expected key in correctness tool input: {e}")
-                    logger.error(f"Attempt {attempt + 1}: Full input received: {check_tool_input}")
+                    logger.error(
+                        f"Attempt {attempt + 1}: Missing expected key in correctness tool input: {e}"
+                    )
+                    logger.error(
+                        f"Attempt {attempt + 1}: Full input received: {check_tool_input}"
+                    )
                     last_is_correct = False
                     last_reasoning = f"Correctness tool response missing key: {e}"
-                    final_log_data_for_file["output"]["assertion_error_details"] = f"Correctness tool response missing key: {e}"
+                    final_log_data_for_file["output"]["assertion_error_details"] = (
+                        f"Correctness tool response missing key: {e}"
+                    )
                     if attempt >= max_retries:
-                         pytest.fail(f"Attempt {attempt + 1}: Correctness tool response was missing key: {e}")
-                    continue # To next retry
+                        pytest.fail(
+                            f"Attempt {attempt + 1}: Correctness tool response was missing key: {e}"
+                        )
+                    continue  # To next retry
                 except Exception as e:
-                    logger.error(f"Attempt {attempt + 1}: Error processing correctness tool input: {e}", exc_info=True)
+                    logger.error(
+                        f"Attempt {attempt + 1}: Error processing correctness tool input: {e}",
+                        exc_info=True,
+                    )
                     last_is_correct = False
                     last_reasoning = f"Failed to process correctness tool input: {e}"
-                    final_log_data_for_file["output"]["assertion_error_details"] = f"Failed to process correctness tool input: {e}"
+                    final_log_data_for_file["output"]["assertion_error_details"] = (
+                        f"Failed to process correctness tool input: {e}"
+                    )
                     if attempt >= max_retries:
-                        pytest.fail(f"Attempt {attempt + 1}: Failed to process correctness tool input: {e}")
-                    continue # To next retry
+                        pytest.fail(
+                            f"Attempt {attempt + 1}: Failed to process correctness tool input: {e}"
+                        )
+                    continue  # To next retry
 
             except Exception as e:
-                logger.error(f"Attempt {attempt + 1}: Error during correctness check for query '{query_text}': {e}", exc_info=True)
+                logger.error(
+                    f"Attempt {attempt + 1}: Error during correctness check for query '{query_text}': {e}",
+                    exc_info=True,
+                )
                 last_is_correct = False
                 last_reasoning = f"Correctness check failed with exception: {e}"
-                final_log_data_for_file["output"]["assertion_error_details"] = f"Correctness check failed with exception: {e}"
+                final_log_data_for_file["output"]["assertion_error_details"] = (
+                    f"Correctness check failed with exception: {e}"
+                )
                 if attempt >= max_retries:
-                     pytest.fail(f"Attempt {attempt + 1}: Correctness check failed with exception: {e}")
-                continue # To next retry
-        
+                    pytest.fail(
+                        f"Attempt {attempt + 1}: Correctness check failed with exception: {e}"
+                    )
+                continue  # To next retry
+
         # After the loop, if not last_is_correct, it means all retries failed or it failed on the last attempt.
-        if not last_is_correct and attempt >= max_retries :
-            pytest.fail(f"LLM evaluation failed after {max_retries + 1} attempts for sample {sample_index}. "
-                        f"Final is_correct_flag is `{last_is_correct}`. "
-                        f"Final Reasoning: '{last_reasoning}'")
+        if not last_is_correct and attempt >= max_retries:
+            pytest.fail(
+                f"LLM evaluation failed after {max_retries + 1} attempts for sample {sample_index}. "
+                f"Final is_correct_flag is `{last_is_correct}`. "
+                f"Final Reasoning: '{last_reasoning}'"
+            )
 
     except Exception as test_exec_exception:
         # Catch any exception that might cause the test to fail before all retries are done
         # or even before the loop fully completes.
-        logger.error(f"Test execution for sample {sample_index} failed globally: {test_exec_exception}", exc_info=True)
+        logger.error(
+            f"Test execution for sample {sample_index} failed globally: {test_exec_exception}",
+            exc_info=True,
+        )
         final_log_data_for_file["score"] = False
         final_log_data_for_file["output"]["test_exception"] = str(test_exec_exception)
         # We will write the JSON in `finally`, then re-raise or let pytest handle the failure.
-        raise # Re-raise the caught exception to ensure the test is marked as failed by pytest
+        raise  # Re-raise the caught exception to ensure the test is marked as failed by pytest
 
     finally:
         end_time = time.monotonic()
         execution_latency_seconds = end_time - start_time
-        final_log_data_for_file["metrics"]["execution_latency_seconds"] = execution_latency_seconds
-        final_log_data_for_file["metadata"]["final_attempt_number_for_json"] = final_log_data_for_file["metadata"]["retry_attempt"] # Should be updated inside loop
-        
+        final_log_data_for_file["metrics"]["execution_latency_seconds"] = (
+            execution_latency_seconds
+        )
+        final_log_data_for_file["metadata"]["final_attempt_number_for_json"] = (
+            final_log_data_for_file["metadata"]["retry_attempt"]
+        )  # Should be updated inside loop
+
         # Populate output details from the last successful (or last attempted) tool call
         final_log_data_for_file["output"]["tool_name"] = tool_name_used_in_test
-        final_log_data_for_file["output"]["tool_input"] = json.dumps(tool_input_used_in_test, indent=2) if tool_input_used_in_test else None
-        final_log_data_for_file["output"]["tool_result"] = json.dumps(tool_result, indent=2, cls=DateTimeEncoder) if tool_result else None
+        final_log_data_for_file["output"]["tool_input"] = (
+            json.dumps(tool_input_used_in_test, indent=2)
+            if tool_input_used_in_test
+            else None
+        )
+        final_log_data_for_file["output"]["tool_result"] = (
+            json.dumps(tool_result, indent=2, cls=DateTimeEncoder)
+            if tool_result
+            else None
+        )
         final_log_data_for_file["output"]["correctness_reasoning"] = last_reasoning
-        final_log_data_for_file["score"] = last_is_correct # Ensure final score is set
+        final_log_data_for_file["score"] = last_is_correct  # Ensure final score is set
 
         # Generate a unique filename for the JSON output
         unique_file_id = str(uuid.uuid4())
-        worker_id = os.environ.get("PYTEST_XDIST_WORKER", "main_thread") # Default if not in xdist
-        
+        worker_id = os.environ.get(
+            "PYTEST_XDIST_WORKER", "main_thread"
+        )  # Default if not in xdist
+
         # Sanitize test_case_name for filename (take first 30 chars, replace spaces)
-        safe_test_name_part = test_case_name.replace(" ", "_").replace("/", "_").replace("\\", "_")[:30]
+        safe_test_name_part = (
+            test_case_name.replace(" ", "_").replace("/", "_").replace("\\", "_")[:30]
+        )
 
         file_name = f"gql_test_idx_{sample_index}_{safe_test_name_part}_w_{worker_id}_attempt_{final_log_data_for_file['metadata']['final_attempt_number_for_json']}_{('pass' if final_log_data_for_file['score'] else 'fail')}_{unique_file_id}.json"
         file_path = weave_results_dir / file_name
@@ -438,9 +518,13 @@ Please re-analyze the original query ("{query_text}") and the result from your p
 
     # If we reach here and no exception was raised by pytest.fail or re-raised from the try block,
     # it means the correctness check passed within the allowed attempts.
-    if not last_is_correct: # Final check if loop exited due to retries without success
-        pytest.fail(f"LLM evaluation failed after {max_retries + 1} attempts for sample {sample_index}. "
-                    f"Final is_correct_flag is `{last_is_correct}`. "
-                    f"Final Reasoning: '{last_reasoning}'")
+    if not last_is_correct:  # Final check if loop exited due to retries without success
+        pytest.fail(
+            f"LLM evaluation failed after {max_retries + 1} attempts for sample {sample_index}. "
+            f"Final is_correct_flag is `{last_is_correct}`. "
+            f"Final Reasoning: '{last_reasoning}'"
+        )
 
-    logger.info(f"--- Test for sample {sample_index} ({test_case_name}) completed. Score: {last_is_correct} ---")
+    logger.info(
+        f"--- Test for sample {sample_index} ({test_case_name}) completed. Score: {last_is_correct} ---"
+    )
