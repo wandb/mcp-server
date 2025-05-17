@@ -1,3 +1,5 @@
+"""Models for the MCP query tools."""
+
 import copy
 import json
 import logging
@@ -8,16 +10,20 @@ import traceback
 from typing import Any, Dict, List, Optional, Union
 
 import wandb
+from importlib.metadata import PackageNotFoundError, version
+from rich.logging import RichHandler
+
+from wandb_mcp_server.utils import get_rich_logger
 
 # Added imports for AST pagination
 import copy
 from typing import Optional, List, Any # Ensure these are here
 
 # Create a logger for this module
-logger = logging.getLogger(__name__)
+logger = get_rich_logger(__name__)
 
 
-def list_entity_projects(entity: str = None) -> List[Dict[str, Any]]:
+def list_entity_projects(entity: str | None = None) -> Dict[str, List[Dict[str, Any]]]:
     """
     Fetch all projects for a specific wandb entity. If no entity is provided, 
     fetches projects for the current user and their teams.
