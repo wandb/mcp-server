@@ -395,7 +395,7 @@ Please re-analyze the original query ("{query_text}") and the result from your p
         # or even before the loop fully completes.
         logger.error(f"Test execution for sample {sample_index} failed globally: {test_exec_exception}", exc_info=True)
         final_log_data_for_file["score"] = False
-        final_log_data_for_file["output"]["global_test_exception"] = str(test_exec_exception)
+        final_log_data_for_file["output"]["test_exception"] = str(test_exec_exception)
         # We will write the JSON in `finally`, then re-raise or let pytest handle the failure.
         raise # Re-raise the caught exception to ensure the test is marked as failed by pytest
 
