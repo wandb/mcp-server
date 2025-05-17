@@ -281,4 +281,4 @@ Actual Tool Result from '{tool_name}':
                     f"Final Reasoning: '{last_reasoning}'")
 
     # If we reach here, it means the correctness check passed within the allowed attempts.
-    logger.info("--- Test passed within allowed attempts. ---") 
+    logger.info("--- Test passed within allowed attempts. ---")
