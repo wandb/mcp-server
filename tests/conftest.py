@@ -90,7 +90,6 @@ except ImportError:
         "Weave SDK not found or could not be imported. Weave evaluation logging will be skipped."
     )
 
-
 WANDB_TEST_SUITE_PROJECT = os.environ.get(
     "WANDB_PROJECT", "wandb-mcp-server-test-suite-outputs"
 )
