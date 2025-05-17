@@ -23,7 +23,7 @@ from typing import Optional, List, Any # Ensure these are here
 logger = get_rich_logger(__name__)
 
 
-def list_entity_projects(entity: str = None) -> List[Dict[str, Any]]:
+def list_entity_projects(entity: str | None = None) -> Dict[str, List[Dict[str, Any]]]:
     """
     Fetch all projects for a specific wandb entity. If no entity is provided, 
     fetches projects for the current user and their teams.

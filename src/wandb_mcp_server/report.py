@@ -180,5 +180,5 @@ def parse_report_content_enhanced(text: str) -> List[Union[wr.H1, wr.H2, wr.H3, 
     # Don't forget any remaining paragraph content
     if current_paragraph:
         blocks.append(wr.P("\n".join(current_paragraph)))
-    
-    return blocks 
+
+    return blocks

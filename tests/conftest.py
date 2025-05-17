@@ -297,9 +297,3 @@ def pytest_sessionfinish(session):
             logger.info(f"(ID: {invocation_id}) WEAVE_DISABLED restored by master to: {os.environ.get('WEAVE_DISABLED')}. Master session_finish part complete.")
     else:
         logger.info(f"WORKER_LOGIC_SKIP: Skipping main logic in pytest_sessionfinish for worker '{worker_id}' (ID: {invocation_id})")
-
-# and DateTimeEncoder is available (e.g., from the test_query_weave_traces file or a shared util)
-# For simplicity, if DateTimeEncoder is in test_query_weave_traces, we might need to adjust imports
-# or duplicate/move it to a shared location. For now, we'll assume it can be handled.
-# If DateTimeEncoder is specific to test_query_weave_traces.py, that test file will use it.
-# The sessionfinish hook will deserialize standard JSON.
