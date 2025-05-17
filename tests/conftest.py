@@ -127,14 +127,6 @@ def pytest_sessionfinish(session):
     if workerinput is not None:
         worker_id = workerinput.get('workerid', 'worker_unknown')
     
-    # Create diagnostic log file for every invocation to track calls
-    # These files can be deleted after debugging.
-    diag_log_dir = "pytest_sessionfinish_diag_logs"
-    os.makedirs(diag_log_dir, exist_ok=True)
-    diag_log_file_name = os.path.join(diag_log_dir, f"session_finish_log_pid_{os.getpid()}_{worker_id}_{invocation_id}.txt")
-    with open(diag_log_file_name, "w") as f:
-        f.write(f"pytest_sessionfinish invoked (ID: {invocation_id}, ProcessID: {os.getpid()}, Worker: {worker_id}) at {time.time()}\n")
-    
     logger.info(f"pytest_sessionfinish invoked (ID: {invocation_id}, ProcessID: {os.getpid()}, Worker: {worker_id})")
 
     if worker_id == "master":
@@ -259,15 +251,15 @@ def pytest_sessionfinish(session):
                     if 'sample_name' in metadata: current_inputs['_sample_name'] = metadata['sample_name']
                     if 'source_test_file_name' in metadata: current_inputs['_source_test_file_name'] = metadata['source_test_file_name']
 
-                    pred_logger = session_eval_logger.log_prediction(inputs=current_inputs, output=output)
+                    score_logger = session_eval_logger.log_prediction(inputs=current_inputs, output=output)
                     
                     # Log the primary pass/fail status with a consistent scorer name
-                    pred_logger.log_score(scorer="overall_test_status", score=bool(score_value))
+                    score_logger.log_score(scorer="test_passed", score=bool(score_value))
 
                     if execution_latency is not None:
-                        pred_logger.log_score(scorer="execution_latency_seconds", score=float(execution_latency))
+                        score_logger.log_score(scorer="execution_latency_seconds", score=float(execution_latency))
                         all_latencies.append(float(execution_latency))
-                    pred_logger.finish()
+                    score_logger.finish()
                     total_tests_logged += 1
                     if score_value: passed_tests_logged += 1
                 except Exception as e:
