@@ -29,31 +29,32 @@ class WeaveApiClient:
         retries: int = 3,
         timeout: int = 10,
     ):
-        """Initialize the Weave API client.
+        """Initialize the WeaveApiClient.
 
         Args:
-            api_key: Weights & Biases API key. If not provided, will try to get from environment.
-            server_url: Weave API server URL. If not provided, will try to get from environment.
-            retries: Number of retries for HTTP requests.
-            timeout: Timeout for HTTP requests in seconds.
-        """
-        self.api_key = api_key or os.environ.get("WANDB_API_KEY")
-        
-        # If API key not found in args or env, try to get from .netrc
-        if not self.api_key:
-            netrc_api_key = _wandb_api_key_via_netrc()
-            if netrc_api_key:
-                self.api_key = netrc_api_key
-                # Also set in environment for other components
-                os.environ["WANDB_API_KEY"] = netrc_api_key
-                
-        if not self.api_key:
-            raise ValueError("API key not found. Please provide an API key or set WANDB_API_KEY environment variable.")
+            api_key: API key for authentication. If None, try to get from environment.
+            server_url: Weave API server URL. Defaults to 'https://trace.wandb.ai'.
+            retries: Number of retries for failed requests.
+            timeout: Request timeout in seconds.
 
-        self.server_url = server_url or os.environ.get("WEAVE_TRACE_SERVER_URL", "https://trace.wandb.ai")
+        Raises:
+            ValueError: If no API key is provided or found in environment.
+        """
+        # Set up a session for connection pooling and better request handling
+        self.session = requests.Session()
+        
+        # Try to get API key from environment if not provided
+        if api_key is None:
+            api_key = os.environ.get("WANDB_API_KEY")
+        
+        # Validate API key
+        if not api_key:
+            raise ValueError("API key not found. Provide api_key or set WANDB_API_KEY environment variable.")
+        
+        self.api_key = api_key
+        self.server_url = server_url or "https://trace.wandb.ai"
         self.retries = retries
         self.timeout = timeout
-        self.session = get_retry_session(retries=retries)
 
     def _get_auth_headers(self) -> Dict[str, str]:
         """Get authentication headers for the Weave API.

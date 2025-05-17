@@ -17,7 +17,7 @@ from wandb_mcp_server.utils import get_rich_logger
 load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
 
 # Configure logging
-logger = get_rich_logger("weave-mcp-server")
+logger = get_rich_logger(__name__)
 
 def create_report(
     entity_name: str,

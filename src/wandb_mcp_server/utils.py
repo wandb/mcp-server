@@ -1,22 +1,24 @@
 from __future__ import annotations
 
+import logging
 import netrc
 import os
-from dataclasses import field
-import logging
+import subprocess
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 import simple_parsing
-from dataclasses import dataclass
 from rich.logging import RichHandler
 
-
 os.environ["WANDB_SILENT"] = "True"
+os.environ["WEAVE_SILENT"] = "True"
+
 
 # Define a handler to redirect logs
 class RedirectLoggerHandler(logging.Handler):
     """A handler that redirects log records to another logger."""
+
     def __init__(self, target_logger, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.target_logger = target_logger
@@ -27,11 +29,13 @@ class RedirectLoggerHandler(logging.Handler):
         # if formatters are used elsewhere.
         try:
             msg = self.format(record)
-            new_record = logging.makeLogRecord({
-                **record.__dict__,
-                'msg': msg,
-                'args': [], # Args are already incorporated into msg by format()
-            })
+            new_record = logging.makeLogRecord(
+                {
+                    **record.__dict__,
+                    "msg": msg,
+                    "args": [],  # Args are already incorporated into msg by format()
+                }
+            )
             self.target_logger.handle(new_record)
         except Exception:
             self.handleError(record)
@@ -103,7 +107,7 @@ def get_server_args():
         if netrc_api_key:
             os.environ["WANDB_API_KEY"] = netrc_api_key
             _server_args.wandb_api_key = netrc_api_key
-        
+
         # If not set via netrc, try environment variable
         if not _server_args.wandb_api_key:
             _server_args.wandb_api_key = os.getenv("WANDB_API_KEY", "")
@@ -185,3 +189,15 @@ def get_rich_logger(name: str, propagate: bool = False) -> logging.Logger:
     logger.setLevel(logging.DEBUG)
     logger.propagate = propagate
     return logger
+
+
+def get_git_commit():
+    logger = get_rich_logger(__name__)
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True
+        )
+        return str(result.stdout.strip())[:8]
+    except Exception as e:
+        logger.warning(f"Failed to get git commit: {e}")
+        return "unknown"

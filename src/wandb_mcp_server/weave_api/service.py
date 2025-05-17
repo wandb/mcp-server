@@ -70,71 +70,96 @@ class TraceService:
         # Initialize collection for invalid columns (for warning messages)
         self.invalid_columns = set()
 
-    def _map_latency_columns(self, columns: Optional[List[str]]) -> Optional[List[str]]:
-        """Map latency columns to their proper path.
-        
-        Args:
-            columns: List of columns.
-            
-        Returns:
-            Mapped columns.
-        """
-        if not columns:
-            return columns
-            
-        mapped_columns = []
-        for col in columns:
-            if col in self.LATENCY_FIELD_MAPPING:
-                mapped_col = self.LATENCY_FIELD_MAPPING[col]
-                logger.info(f"Mapping column '{col}' to '{mapped_col}'")
-                mapped_columns.append(mapped_col)
-            else:
-                mapped_columns.append(col)
-                
-        return mapped_columns
-        
     def _validate_and_filter_columns(self, columns: Optional[List[str]]) -> tuple[Optional[List[str]], List[str], Set[str]]:
         """Validate columns against CallSchema and filter out synthetic/invalid columns.
         
+        Handles mapping of 'latency_ms' to 'summary.weave.latency_ms'.
+        
         Args:
             columns: List of columns.
             
         Returns:
-            Tuple of (filtered_columns, requested_synthetic_columns, invalid_columns)
+            Tuple of (filtered_columns_for_api, requested_synthetic_columns, invalid_columns_reported)
         """
         if not columns:
-            return columns, [], set()
+            return None, [], set() # Return None for filtered_columns_for_api if input is None
             
-        filtered_columns = []
-        requested_synthetic_columns = []
-        invalid_columns = set()
+        filtered_columns_for_api: list[str] = []
+        requested_synthetic_columns: list[str] = []
+        invalid_columns_reported: set[str] = set()
         
-        # Define synthetic fields that should be kept in the columns list
-        synthetic_fields_to_keep = {"status", "latency_ms"}
-        
-        for col in columns:
-            if col in self.SYNTHETIC_COLUMNS:
-                logger.info(f"Filtering out synthetic column '{col}' from API request")
-                requested_synthetic_columns.append(col)
-            elif col in synthetic_fields_to_keep:
-                # Keep these in filtered columns AND treat as synthetic
-                filtered_columns.append(col)
-                requested_synthetic_columns.append(col)
-            elif col in self.LATENCY_FIELD_MAPPING:
-                # Simply map to the source field
-                # Don't add to filtered_columns, but keep track for synthetic generation
-                requested_synthetic_columns.append(col)
-                # We also need the summary field for this, so make sure it's included
-                if "summary" not in filtered_columns:
-                    filtered_columns.append("summary")
-            elif col in VALID_COLUMNS:
-                # Keep valid columns
-                filtered_columns.append(col)
+        # Define synthetic fields that should be kept if requested by the user,
+        # but their data is derived or needs special handling.
+        synthetic_fields_to_reconstruct: set[str] = {"status", "latency_ms", "costs"}
+
+        processed_columns = set() # To avoid duplicate processing if a column is listed multiple times
+
+        for col_name in columns:
+            if col_name in processed_columns:
+                continue
+            processed_columns.add(col_name)
+
+            if col_name == "latency_ms":
+                # 'latency_ms' is synthetic, its data comes from 'summary.weave.latency_ms'
+                requested_synthetic_columns.append("latency_ms")
+                # Ensure the source field is requested from the API
+                source_field = self.LATENCY_FIELD_MAPPING["latency_ms"]
+                if source_field not in filtered_columns_for_api:
+                    filtered_columns_for_api.append(source_field)
+                # Also ensure 'summary' itself is added if not already, as 'summary.weave.latency_ms' implies 'summary'
+                if "summary" not in filtered_columns_for_api and source_field.startswith("summary."):
+                     filtered_columns_for_api.append("summary")
+                logger.info(f"Column 'latency_ms' requested: will be synthesized from '{source_field}'. Added '{source_field}' to API columns.")
+
+            elif col_name == "costs":
+                # 'costs' is synthetic, its data comes from 'summary.weave.costs'
+                requested_synthetic_columns.append("costs")
+                # Ensure the source field ('summary') is requested
+                if "summary" not in filtered_columns_for_api:
+                    filtered_columns_for_api.append("summary")
+                logger.info("Column 'costs' requested: will be synthesized from 'summary.weave.costs'. Added 'summary' to API columns.")
+            
+            elif col_name == "status":
+                 # 'status' can be top-level or from 'summary.weave.status'
+                requested_synthetic_columns.append("status")
+                # Add 'status' to API columns to try fetching top-level first.
+                # If not present, it will be synthesized from summary.
+                if "status" not in filtered_columns_for_api:
+                    filtered_columns_for_api.append("status")
+                if "summary" not in filtered_columns_for_api: # Also ensure summary for fallback
+                    filtered_columns_for_api.append("summary")
+                logger.info("Column 'status' requested: will attempt direct fetch or synthesize from 'summary.weave.status'.")
+
+            elif col_name in VALID_COLUMNS:
+                # Direct valid column
+                if col_name not in filtered_columns_for_api:
+                    filtered_columns_for_api.append(col_name)
+            
+            elif "." in col_name: # Potentially a dot-separated path
+                base_field = col_name.split('.')[0]
+                if base_field in VALID_COLUMNS:
+                    # Valid nested field (e.g., "summary.weave.latency_ms", "attributes.foo")
+                    if col_name not in filtered_columns_for_api:
+                        filtered_columns_for_api.append(col_name)
+                    logger.info(f"Nested column field '{col_name}' requested, added to API columns.")
+                else:
+                    logger.warning(f"Invalid base field '{base_field}' in nested column '{col_name}'. It will be ignored.")
+                    invalid_columns_reported.add(col_name)
             else:
-                logger.warning(f"Invalid column '{col}' requested and will be ignored")
-                invalid_columns.add(col)
-                
-        return filtered_columns, requested_synthetic_columns, invalid_columns
+                # Neither a direct valid column, nor a recognized synthetic, nor a valid-looking nested path
+                logger.warning(f"Invalid column '{col_name}' requested. It will be ignored.")
+                invalid_columns_reported.add(col_name)
+        
+        # Ensure filtered_columns_for_api does not have duplicates and maintains order as much as possible
+        # (though order to the API might not matter as much as presence)
+        final_filtered_columns_for_api = []
+        seen_in_final = set()
+        for fc in filtered_columns_for_api:
+            if fc not in seen_in_final:
+                final_filtered_columns_for_api.append(fc)
+                seen_in_final.add(fc)
+
+        return final_filtered_columns_for_api, requested_synthetic_columns, invalid_columns_reported
     
     def _ensure_required_columns_for_synthetic(self, filtered_columns: Optional[List[str]], requested_synthetic_columns: List[str]) -> Optional[List[str]]:
         """Ensure required columns for synthetic fields are included.
@@ -275,39 +300,48 @@ class TraceService:
             logger.info(f"Mapping sort field '{sort_by}' to '{self.LATENCY_FIELD_MAPPING[sort_by]}'")
             server_sort_by = self.LATENCY_FIELD_MAPPING[sort_by]
             server_sort_direction = sort_direction
-        # If we need to do client-side sorting by cost, we need to ensure the costs are included
         elif client_side_cost_sort:
             include_costs = True
-            # We need to override server-side sorting to something reasonable
             server_sort_by = "started_at"
             server_sort_direction = sort_direction
+        elif sort_by == "latency_ms": # Added specific handling for latency_ms sort
+            logger.info(f"Sort by 'latency_ms' requested. Will sort by server field '{self.LATENCY_FIELD_MAPPING['latency_ms']}'.")
+            server_sort_by = self.LATENCY_FIELD_MAPPING['latency_ms']
+            server_sort_direction = sort_direction
+        elif "." in sort_by: # Handles general dot-separated paths
+            base_field = sort_by.split('.')[0]
+            if base_field in VALID_COLUMNS:
+                logger.info(f"Using nested sort field for server: {sort_by}")
+                server_sort_by = sort_by
+                server_sort_direction = sort_direction
+            else:
+                logger.warning(f"Invalid base field '{base_field}' in sort_by '{sort_by}', falling back to 'started_at'.")
+                server_sort_by = "started_at"
+                server_sort_direction = sort_direction
         elif sort_by not in VALID_COLUMNS:
-            logger.warning(f"Invalid sort field '{sort_by}', falling back to 'started_at'")
+            logger.warning(f"Invalid sort field '{sort_by}', falling back to 'started_at'.")
             server_sort_by = "started_at"
             server_sort_direction = sort_direction
-        else:
+        else: # sort_by is in VALID_COLUMNS and not a special case
             server_sort_by = sort_by
             server_sort_direction = sort_direction
             
-        # Map latency columns to their proper path
-        mapped_columns = self._map_latency_columns(columns)
-        
         # Validate and filter columns using CallSchema
-        filtered_columns, requested_synthetic_columns, invalid_columns = self._validate_and_filter_columns(mapped_columns)
+        filtered_api_columns, rs_columns, inv_columns = self._validate_and_filter_columns(columns)
         
         # Store invalid columns for later
-        self.invalid_columns = invalid_columns
+        self.invalid_columns = inv_columns # Corrected variable name
         
-        # If costs was requested as a column, make sure to include it
-        if "costs" in requested_synthetic_columns:
+        # If costs was requested as a column (now checked via rs_columns), make sure to include it
+        if "costs" in rs_columns: # Corrected check
             include_costs = True
         
-        # Manually add latency_ms to synthetic fields if requested
-        if columns and "latency_ms" in columns and "latency_ms" not in requested_synthetic_columns:
-            requested_synthetic_columns.append("latency_ms")
+        # Manually add latency_ms to synthetic fields if requested - This is now handled in _validate_and_filter_columns
+        # if columns and "latency_ms" in columns and "latency_ms" not in requested_synthetic_columns:
+        #     requested_synthetic_columns.append("latency_ms")
             
-        # Ensure required columns for synthetic fields are included
-        filtered_columns = self._ensure_required_columns_for_synthetic(filtered_columns, requested_synthetic_columns)
+        # Ensure required columns for synthetic fields are included - This is also largely handled by _validate_and_filter_columns logic
+        # filtered_api_columns = self._ensure_required_columns_for_synthetic(filtered_api_columns, rs_columns)
         
         # Prepare query parameters
         query_params = {
@@ -320,7 +354,7 @@ class TraceService:
             "offset": offset,
             "include_costs": include_costs,
             "include_feedback": include_feedback,
-            "columns": filtered_columns,
+            "columns": filtered_api_columns, # Use the columns intended for the API
             "expand_columns": expand_columns,
         }
         
@@ -331,7 +365,7 @@ class TraceService:
         synthetic_fields = request_body.pop("_synthetic_fields", []) if "_synthetic_fields" in request_body else []
         
         # Make sure all requested synthetic columns are included in synthetic_fields
-        for col in requested_synthetic_columns:
+        for col in rs_columns: # Use rs_columns
             if col not in synthetic_fields:
                 synthetic_fields.append(col)
         
@@ -339,8 +373,8 @@ class TraceService:
         all_traces = list(self.client.query_traces(request_body))
         
         # Add synthetic columns and invalid column warnings back to the results
-        if requested_synthetic_columns or invalid_columns:
-            all_traces = self._add_synthetic_columns(all_traces, requested_synthetic_columns, invalid_columns)
+        if rs_columns or inv_columns: # Use corrected variables
+            all_traces = self._add_synthetic_columns(all_traces, rs_columns, inv_columns)
         
         # Client-side cost-based sorting if needed
         if client_side_cost_sort and all_traces:
@@ -413,29 +447,36 @@ class TraceService:
         # Special handling for cost-based sorting
         client_side_cost_sort = sort_by in self.COST_FIELDS
         
-        # Map latency_ms to summary.weave.latency_ms if needed
-        effective_sort_by = self.LATENCY_FIELD_MAPPING.get(sort_by, sort_by)
-        if sort_by in self.LATENCY_FIELD_MAPPING:
-            logger.info(f"Mapping sort field '{sort_by}' to '{effective_sort_by}' for paginated query")
-        elif sort_by not in VALID_COLUMNS and sort_by not in self.COST_FIELDS:
-            logger.warning(f"Invalid sort field '{sort_by}', falling back to 'started_at'")
-            effective_sort_by = "started_at"
+        # Determine effective_sort_by for the server
+        effective_sort_by = "started_at" # Default
+        if sort_by == "latency_ms":
+            effective_sort_by = self.LATENCY_FIELD_MAPPING['latency_ms']
+            logger.info(f"Paginated sort by 'latency_ms', server will use '{effective_sort_by}'.")
+        elif "." in sort_by:
+            base_field = sort_by.split('.')[0]
+            if base_field in VALID_COLUMNS:
+                effective_sort_by = sort_by
+                logger.info(f"Paginated sort by nested field '{sort_by}', server will use it directly.")
+            else:
+                logger.warning(f"Paginated sort by invalid nested field '{sort_by}', defaulting to 'started_at'.")
+        elif sort_by in VALID_COLUMNS and sort_by not in self.COST_FIELDS: # Exclude COST_FIELDS as they are client-sorted
+            effective_sort_by = sort_by
+        elif sort_by not in self.COST_FIELDS: # If not valid and not cost, warn and default
+             logger.warning(f"Paginated sort by invalid field '{sort_by}', defaulting to 'started_at'.")
             
-        # Map latency columns
-        mapped_columns = self._map_latency_columns(columns)
-        
         # Validate and filter columns using CallSchema
-        filtered_columns, requested_synthetic_columns, invalid_columns = self._validate_and_filter_columns(mapped_columns)
+        # Pass the original 'columns'
+        filtered_api_columns, rs_columns, inv_columns = self._validate_and_filter_columns(columns)
         
         # Store invalid columns for later
-        self.invalid_columns = invalid_columns
+        self.invalid_columns = inv_columns # Corrected
         
         # If costs was requested as a column, make sure to include it
-        if "costs" in requested_synthetic_columns:
+        if "costs" in rs_columns: # Corrected
             include_costs = True
             
-        # Ensure required columns for synthetic fields are included
-        filtered_columns = self._ensure_required_columns_for_synthetic(filtered_columns, requested_synthetic_columns)
+        # Ensure required columns for synthetic fields are included - Handled by _validate_and_filter_columns
+        # filtered_api_columns = self._ensure_required_columns_for_synthetic(filtered_api_columns, rs_columns)
 
         if client_side_cost_sort:
             logger.info(f"Cost-based sorting detected: {sort_by}")
@@ -446,12 +487,12 @@ class TraceService:
                 sort_by=sort_by,
                 sort_direction=sort_direction,
                 target_limit=target_limit,
-                columns=filtered_columns,  # Pass filtered columns
+                columns=filtered_api_columns,  # Pass filtered columns for API
                 expand_columns=expand_columns,
-                include_costs=True,  # Force include_costs for cost sorting
+                include_costs=True, 
                 include_feedback=include_feedback,
-                requested_synthetic_columns=requested_synthetic_columns,  # Pass synthetic columns request
-                invalid_columns=invalid_columns,  # Pass invalid columns
+                requested_synthetic_columns=rs_columns,  # Pass synthetic columns request
+                invalid_columns=inv_columns,  # Pass invalid columns
             )
         else:
             # Normal paginated query logic
@@ -467,13 +508,15 @@ class TraceService:
                     entity_name=entity_name,
                     project_name=project_name,
                     filters=filters,
-                    sort_by=effective_sort_by,  # Use the mapped field name if applicable
+                    sort_by=effective_sort_by, 
                     sort_direction=sort_direction,
                     limit=current_chunk_size,
                     offset=current_offset,
                     include_costs=include_costs,
                     include_feedback=include_feedback,
-                    columns=mapped_columns,  # Pass original (unmapped) columns to ensure proper handling
+                    columns=columns, # Pass original 'columns' here, query_traces will validate and filter.
+                                     # This ensures that if 'latency_ms' was requested, it's handled correctly
+                                     # by the nested call to _validate_and_filter_columns inside query_traces.
                     expand_columns=expand_columns,
                     return_full_data=True,  # We want raw data for now
                     metadata_only=False,

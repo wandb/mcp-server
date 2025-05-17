@@ -42,6 +42,7 @@ from wandb_mcp_server.utils import get_rich_logger, get_server_args
 
 # Silence logging to avoid interfering with MCP server
 os.environ["WANDB_SILENT"] = "True"
+os.environ["WEAVE_SILENT"] = "True"
 weave_logger = get_rich_logger("weave")
 weave_logger.setLevel(logging.ERROR)
 gql_transport_logger = get_rich_logger("gql.transport.requests")

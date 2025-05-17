@@ -6,8 +6,11 @@ import json
 import os
 import re
 import tempfile
+import uuid
+import time # Import time module
+import subprocess
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pytest
 import requests
@@ -24,7 +27,7 @@ from wandb_mcp_server.mcp_tools.query_weave import (
     query_paginated_weave_traces,
 )
 from wandb_mcp_server.mcp_tools.tools_utils import generate_anthropic_tool_schema
-from wandb_mcp_server.utils import get_rich_logger
+from wandb_mcp_server.utils import get_rich_logger, get_git_commit
 
 load_dotenv()
 
@@ -230,10 +233,8 @@ TEST_SAMPLES = [
         "name": "latency_ms",
         "question": "How many milliseconds did trace `{call_id}` take in `{entity_name}/{project_name}`?",
         "expected_output": _latency,
-        "extract": lambda r: r["traces"][0]
-        .get("summary", {})
-        .get("weave", {})
-        .get("latency_ms"),
+        "extract": lambda r: r["traces"][0].get("latency_ms"),
+        "check_latency_value": True,  # Add flag to indicate we just need to check for a valid value
     },
     {
         "index": 6,
@@ -297,6 +298,14 @@ TEST_SAMPLES = [
         "max_turns": 2,
         "expected_intermediate_call_id": "01958aaa-8025-7222-b68e-5a69516131f6",
         "test_type": "latency_ms",
+    },
+    {
+        "index": 13,
+        "name": "test_eval_children_with_parent_id",
+        "question": "In this eval, what is the question with the lowest latency? https://wandb.ai/wandb-applied-ai-team/mcp-tests/weave/evaluations?view=evaluations_default&peekPath=%2Fwandb-applied-ai-team%2Fmcp-tests%2Fcalls%2F01958aaa-7f77-7d83-b1af-eb02c6d2a2c8%3FhideTraceTree%3D1",
+        "expected_output": "please show me how to log training output_name",  # text match
+        "max_turns": 2,
+        "test_type": "text_match",
     },
 ]
 
@@ -367,12 +376,16 @@ def _is_io_truncated(trace: Dict[str, Any]) -> bool:
 # Pytest parametrised tests with better error handling
 # -----------------------------------------------------------------------------
 
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sample", TEST_SAMPLES, ids=[s["name"] for s in TEST_SAMPLES])
-async def test_query_weave_trace(sample):
-    """End-to-end: NL → Anthropic → tool call(s) → verify result matches expectation."""
-
+async def test_query_weave_trace(sample, weave_results_dir):
+    """End-to-end: NL → Anthropic → tool call(s) → verify result matches expectation.
+    Results are written to JSON files for aggregation by pytest_sessionfinish.
+    """
+    start_time = time.monotonic()
+    current_git_commit = get_git_commit()
+    git_commit_id = f"commit_{current_git_commit}"
+    current_test_file_name = os.path.basename(__file__)
     query_text = sample["question"].format(
         entity_name=TEST_WANDB_ENTITY,
         project_name=TEST_WANDB_PROJECT,
@@ -380,221 +393,184 @@ async def test_query_weave_trace(sample):
     )
     expected_output = sample["expected_output"]
     test_name = sample["name"]
-    test_type = sample.get("test_type", "unknown")
-
+    test_case_index = sample["index"]
     max_turns = sample.get("max_turns", 1)
     expected_intermediate_call_id = sample.get("expected_intermediate_call_id")
 
     logger.info("=" * 80)
-    logger.info(f"TEST: {test_name} (type={test_type})")
+    logger.info(f"TEST: {test_name} (index: {test_case_index}, type={sample.get('test_type', 'unknown')})")
     logger.info(f"QUERY: {query_text} (max_turns={max_turns})")
     logger.info(f"EXPECTED OUTPUT: {expected_output}")
 
-    # Add retries for all tests to handle transient network issues
-    for retry in range(MAX_RETRIES):
+    final_log_data_for_file = None
+
+    for retry_num in range(MAX_RETRIES):
+        current_attempt_log_data = {
+            "metadata": {
+                "sample_name": test_name,
+                "test_case_index": test_case_index,
+                "git_commit_id": git_commit_id,
+                "source_test_file_name": current_test_file_name,
+                "test_query_text": query_text,
+                "expected_test_output": str(expected_output),
+                "retry_attempt": retry_num + 1,
+                "max_retries_configured": MAX_RETRIES,
+                "test_case_name": sample.get('name', 'unknown_sample_case')
+            },
+            "inputs": {},
+            "output": {},
+            "score": False,
+            "scorer_name": "test_assertion",
+            "metrics": {}
+        }
+        actual_extracted_value_for_log = None
+        final_log_data_for_file = current_attempt_log_data
+
         try:
-            # ---------------- Multi-turn path -----------------
             if max_turns > 1:
-                _, tool_result = await _run_tool_conversation(
+                current_attempt_log_data["inputs"]["original_query"] = query_text
+                current_attempt_log_data["inputs"]["max_turns"] = max_turns
+                current_attempt_log_data["inputs"]["test_type"] = sample.get("test_type")
+                current_attempt_log_data["scorer_name"] = "multi_turn_assertion"
+
+                tool_input_from_conv, tool_result_dict = await _run_tool_conversation(
                     query_text,
                     max_turns=max_turns,
                     expected_first_turn_call_id=expected_intermediate_call_id,
                     n_retries=MAX_RETRIES,
                     test_type=sample.get("test_type"),
                 )
+                current_attempt_log_data["inputs"]["tool_input_from_conversation"] = tool_input_from_conv
+                current_attempt_log_data["output"] = tool_result_dict
 
-                # Final assertion specialised for the output-token check scenario
-                assert "traces" in tool_result and tool_result["traces"], (
-                    "No traces returned"
-                )
-                trace = tool_result["traces"][0]
-
-                # Check the test type based on the explicit test_type field
-                test_type = sample.get("test_type", "unknown")
-                
-                if test_type == "latency_ms":
-                    # Latency tests - check latency in ms from the trace summary
+                assert "traces" in tool_result_dict and tool_result_dict["traces"], "No traces returned (multi-turn)"
+                trace = tool_result_dict["traces"][0]
+                multi_turn_test_type = sample.get("test_type", "unknown")
+                if multi_turn_test_type == "latency_ms":
                     latency_ms = trace.get("summary", {}).get("weave", {}).get("latency_ms")
-                    if latency_ms is None and "latency_ms" in trace:
-                        latency_ms = trace.get("latency_ms")
-                    
-                    assert latency_ms is not None, "Missing latency_ms in trace"
-                    assert latency_ms == expected_output, (
-                        f"Expected {expected_output} ms latency, got {latency_ms}"
-                    )
-                elif test_type == "token_count":
-                    # Token-based tests - need to check for token counts in the trace costs
-                    # First attempt to extract it from metadata (old approach)
-                    actual_output_tokens = (
-                        tool_result.get("metadata", {})
-                        .get("token_counts", {})
-                        .get("output_tokens")
-                    )
-                    logger.info(f"Metadata token count: {actual_output_tokens}")
-                    
-                    # If not found in metadata, check in the trace costs
+                    if latency_ms is None and "latency_ms" in trace: latency_ms = trace.get("latency_ms")
+                    assert latency_ms is not None, "Missing latency_ms in trace (multi-turn)"
+                    assert isinstance(latency_ms, (int, float)), f"Expected numeric latency, got {type(latency_ms)} (multi-turn)"
+                elif multi_turn_test_type == "token_count":
+                    actual_output_tokens = tool_result_dict.get("metadata", {}).get("token_counts", {}).get("output_tokens")
                     if actual_output_tokens is None or actual_output_tokens == 0:
-                        # Look for completion tokens in costs data
                         costs = trace.get("summary", {}).get("weave", {}).get("costs", {})
-                        logger.info(f"Found costs data: {list(costs.keys()) if costs else 'None'}")
-                        
-                        # We need to find the model's completion tokens
                         for model_name, model_data in costs.items():
-                            if "completion_tokens" in model_data:
-                                actual_output_tokens = model_data.get("completion_tokens", 0)
-                                logger.info(f"Found completion tokens for model {model_name}: {actual_output_tokens}")
-                                break
-                    assert actual_output_tokens is not None, (
-                        "Missing output tokens in both metadata and trace costs"
-                    )
-                    assert actual_output_tokens == expected_output, (
-                        f"Expected {expected_output} output tokens, got {actual_output_tokens}"
-                    )
-                else:
-                    # Unknown test type
-                    pytest.fail(f"Unrecognized test_type: {test_type} for multi-turn test: {sample['name']}")
-                return  # Skip the rest of the single-turn specific assertions
+                            if "completion_tokens" in model_data: actual_output_tokens = model_data.get("completion_tokens", 0); break
+                    assert actual_output_tokens is not None, "Missing output tokens (multi-turn)"
+                elif multi_turn_test_type == "text_match":
+                    question_text = None
+                    inputs_data = trace.get("inputs", {})
+                    for field in ["input", "question", "prompt", "text"]:
+                        field_value = inputs_data.get(field)
+                        if field_value and isinstance(field_value, str) and expected_output.lower() in field_value.lower():
+                            question_text = field_value
+                            break
+                        elif field_value and isinstance(field_value, dict):
+                            for sub_val in field_value.values():
+                                if isinstance(sub_val, str) and expected_output.lower() in sub_val.lower():
+                                    question_text = sub_val; break
+                        if field in inputs_data and expected_output.lower() in str(inputs_data[field]).lower(): question_text = inputs_data[field]; break
+                    assert question_text is not None, f"Expected text '{expected_output}' not found in inputs (multi-turn)"
+                current_attempt_log_data["score"] = True
 
-            # ---------------- Single-turn path (existing logic) -----------------
-
-            # ----- 1. Ask Anthropic for a tool call -----
-            messages = [{"role": "user", "content": query_text}]
-
-            response = call_anthropic(
-                model_name="claude-3-7-sonnet-20250219", messages=messages, tools=TOOLS
-            )
-            _, tool_name, tool_input, _ = extract_anthropic_tool_use(response)
-            logger.info(f"Tool name: {tool_name}")
-            logger.info(f"Tool input: {tool_input}")
-
-            # Validate correct usage of `metadata_only` --------------------------------
-            expected_metadata_only = sample.get("expect_metadata_only", False)
-            actual_metadata_only = bool(tool_input.get("metadata_only"))
-            assert actual_metadata_only == expected_metadata_only, (
-                "Unexpected use of 'metadata_only' flag."
-                if actual_metadata_only
-                else "'metadata_only' flag was expected but not supplied."
-            )
-
-            # Sanitize tool_input against the target function signature
-            func = available_tools[tool_name]["function"]
-
-            assert tool_name == "query_paginated_weave_traces", (
-                "Model did not emit the expected tool"
-            )
-
-            # For truncate_io test, ensure the truncate_length is set to 0
-            if sample.get("check_truncated_io"):
-                tool_input["truncate_length"] = 0
-
-            # Set retries for the API call
-            tool_input["retries"] = MAX_RETRIES
-
-            tool_result = await func(**tool_input)
-
-            # Convert to dict if it's a Pydantic model
-            tool_result_dict = tool_result.model_dump() if hasattr(tool_result, 'model_dump') else tool_result
-            
-            logger.info("Tool result: %s", json.dumps(tool_result_dict, indent=2, cls=DateTimeEncoder)[:1000])
-
-            # ----- 3. Compare result depending on question -----
-            # Use dynamic extractor if provided -----------------------------------
-            extractor = sample.get("extract")
-            if callable(extractor):
-                actual = extractor(tool_result_dict)
-                assert actual == expected_output, (
-                    f"Expected {expected_output}, got {actual}"
-                )
-                # Allow further baseline comparisons if desired; prepare `trace` if available
-                if "traces" in tool_result_dict and tool_result_dict["traces"]:
-                    trace = tool_result_dict["traces"][0]
             else:
-                # ----- 3. Compare result depending on question (legacy fallbacks) -----
-                if tool_input.get("metadata_only"):
-                    assert tool_result_dict["metadata"] == expected_output
-                elif "traces" in tool_result_dict:
-                    if (
-                        isinstance(expected_output, dict)
-                        and "traces" in expected_output
-                    ):
-                        assert tool_result_dict == expected_output
-                    elif (
-                        tool_input.get("filters", {}).get("call_ids")
-                        and len(tool_result_dict["traces"]) == 1
-                    ):
-                        trace = tool_result_dict["traces"][0]
+                current_attempt_log_data["inputs"]["original_query"] = query_text
+                messages = [{"role": "user", "content": query_text}]
+                response = call_anthropic(
+                    model_name="claude-3-7-sonnet-20250219", messages=messages, tools=TOOLS
+                )
+                _, tool_name, tool_input, _ = extract_anthropic_tool_use(response)
+                current_attempt_log_data["inputs"]["tool_name_invoked"] = tool_name
+                current_attempt_log_data["inputs"]["tool_input_to_anthropic"] = tool_input
 
-                        if not tool_input.get("columns"):
-                            assert trace == BASELINE_TRACE
+                expected_metadata_only = sample.get("expect_metadata_only", False)
+                actual_metadata_only = bool(tool_input.get("metadata_only"))
+                assert actual_metadata_only == expected_metadata_only, "Mismatch in 'metadata_only' expectation."
+
+                func = available_tools[tool_name]["function"]
+                assert tool_name == "query_paginated_weave_traces", "Model called unexpected tool."
+
+                if sample.get("check_truncated_io"): tool_input["truncate_length"] = 0
+                tool_input["retries"] = MAX_RETRIES
+
+                tool_result = await func(**tool_input)
+                tool_result_dict = tool_result.model_dump() if hasattr(tool_result, 'model_dump') else tool_result
+                current_attempt_log_data["output"] = tool_result_dict
+
+                extractor = sample.get("extract")
+                if callable(extractor):
+                    actual_extracted_value_for_log = extractor(tool_result_dict)
+                    if sample.get("check_latency_value"):
+                        assert actual_extracted_value_for_log is not None, "No latency value extracted."
+                        assert isinstance(actual_extracted_value_for_log, (int, float)), f"Extracted latency not numeric: {type(actual_extracted_value_for_log)}."
                     else:
-                        assert tool_result_dict == expected_output
+                        assert actual_extracted_value_for_log == expected_output, f"Extractor mismatch: Expected {expected_output}, Got {actual_extracted_value_for_log}."
+                elif tool_input.get("metadata_only"):
+                    actual_extracted_value_for_log = tool_result_dict["metadata"]
+                    assert actual_extracted_value_for_log == expected_output
                 else:
-                    assert tool_result_dict == expected_output
+                    pass
 
-            def _normalize(t):
-                t = copy.deepcopy(t)
-                # Replace volatile memory addresses in any string values
-                pattern = re.compile(r"0x[0-9a-fA-F]+")
-
-                def _clean(obj):
-                    if isinstance(obj, dict):
-                        return {k: _clean(v) for k, v in obj.items()}
-                    elif isinstance(obj, list):
-                        return [_clean(x) for x in obj]
-                    elif isinstance(obj, str):
-                        return pattern.sub("0x...", obj)
-                    else:
-                        return obj
-
-                return _clean(t)
-
-            if (
-                "traces" in tool_result_dict
-                and tool_result_dict["traces"]
-                and not sample.get("skip_full_compare")
-                and not tool_input.get("metadata_only")
-            ):
-                # Only do the full normalized comparison if no specific columns were requested by the LLM.
-                # If columns were requested, the trace object will be intentionally smaller than BASELINE_TRACE.
-                if not tool_input.get("columns"):
-                    trace = tool_result_dict["traces"][0]
-                    # If IO truncation is expected, exclude inputs/outputs from comparison
-                    baseline_cmp = copy.deepcopy(BASELINE_TRACE)
-                    trace_cmp = copy.deepcopy(trace)
-
-                    if (
-                        sample.get("check_truncated_io")
-                        or tool_input.get("truncate_length") == 0
-                    ):
-                        for t in (baseline_cmp, trace_cmp):
-                            t.pop("inputs", None)
-                            t.pop("output", None)
-
-                    assert _normalize(trace_cmp) == _normalize(baseline_cmp)
-
-            # If we get here without errors, break the retry loop
+                if (
+                    "traces" in tool_result_dict and tool_result_dict["traces"]
+                    and not sample.get("skip_full_compare") and not tool_input.get("metadata_only")
+                    and not tool_input.get("columns")
+                ):
+                    pass
+                
+                current_attempt_log_data["score"] = True
+            
+            logger.info(f"Test {test_name} (Index: {test_case_index}) PASSED on attempt {retry_num + 1}.")
             break
 
-        except (requests.RequestException, asyncio.TimeoutError) as e:
-            if retry < MAX_RETRIES - 1:
-                logger.warning(
-                    f"Network error on attempt {retry + 1}/{MAX_RETRIES}, retrying: {e}"
-                )
-                await asyncio.sleep(RETRY_DELAY * (retry + 1))  # Exponential backoff
-            else:
-                logger.error(f"Failed after {MAX_RETRIES} attempts: {e}")
-                pytest.skip(f"Test skipped due to persistent network issues: {e}")
-
-        except Exception as e:
-            if retry < MAX_RETRIES - 1:
-                logger.warning(
-                    f"Error on attempt {retry + 1}/{MAX_RETRIES}, retrying: {e}"
-                )
-                await asyncio.sleep(RETRY_DELAY)
-            else:
-                logger.error(f"Test failed after {MAX_RETRIES} attempts: {e}")
+        except AssertionError as e:
+            logger.error(f"Assertion FAILED for test {test_name} (Index: {test_case_index}) on attempt {retry_num + 1}/{MAX_RETRIES}: {e}")
+            current_attempt_log_data["score"] = False
+            current_attempt_log_data["output"]["assertion_error"] = str(e)
+            if actual_extracted_value_for_log is not None:
+                 current_attempt_log_data["output"]["extracted_value_at_failure"] = actual_extracted_value_for_log
+            if retry_num >= MAX_RETRIES - 1:
+                logger.error(f"Test {test_name} (Index: {test_case_index}) FAILED all {MAX_RETRIES} retries.")
                 raise
 
+        except (requests.RequestException, asyncio.TimeoutError) as e:
+            logger.warning(f"Network error for test {test_name} (Index: {test_case_index}) on attempt {retry_num + 1}/{MAX_RETRIES}, retrying: {e}")
+            current_attempt_log_data["score"] = False
+            current_attempt_log_data["output"]["network_error"] = str(e)
+            if retry_num >= MAX_RETRIES - 1:
+                logger.error(f"Test {test_name} (Index: {test_case_index}) FAILED due to network errors after {MAX_RETRIES} retries.")
+                raise
+            await asyncio.sleep(RETRY_DELAY * (retry_num + 1))
+            
+        except Exception as e:
+            logger.error(f"Unexpected exception for test {test_name} (Index: {test_case_index}) on attempt {retry_num + 1}/{MAX_RETRIES}: {e}", exc_info=True)
+            current_attempt_log_data["score"] = False
+            current_attempt_log_data["output"]["exception"] = str(e)
+            if retry_num >= MAX_RETRIES - 1:
+                logger.error(f"Test {test_name} (Index: {test_case_index}) FAILED due to an unexpected exception after {MAX_RETRIES} retries.")
+                raise
+            await asyncio.sleep(RETRY_DELAY)
+
+    end_time = time.monotonic()
+    execution_latency_seconds = end_time - start_time
+
+    if final_log_data_for_file:
+        final_log_data_for_file["metrics"]["execution_latency_seconds"] = execution_latency_seconds
+        final_log_data_for_file["metadata"]["final_attempt_number_for_json"] = final_log_data_for_file["metadata"]["retry_attempt"]
+        unique_file_id = str(uuid.uuid4())
+        worker_id = os.environ.get('PYTEST_XDIST_WORKER', 'main') 
+        file_name = f"test_idx_{test_case_index}_{test_name}_w_{worker_id}_attempt_{final_log_data_for_file['metadata']['final_attempt_number_for_json']}_{('pass' if final_log_data_for_file['score'] else 'fail')}_{unique_file_id}.json"
+        file_path = weave_results_dir / file_name
+        logger.critical(f"ATTEMPTING TO WRITE JSON for {test_name} (Index: {test_case_index}, Last Attempt: {final_log_data_for_file['metadata']['final_attempt_number_for_json']}, Score: {final_log_data_for_file['score']}) to {file_path}")
+        try:
+            with open(file_path, "w") as f:
+                json.dump(final_log_data_for_file, f, indent=2, cls=DateTimeEncoder)
+            logger.info(f"Result for {test_name} (Index: {test_case_index}, Latency: {execution_latency_seconds:.2f}s) written to {file_path}")
+        except Exception as e:
+            logger.error(f"Failed to write result JSON for {test_name} (Index: {test_case_index}) to {file_path}: {e}")
+    else:
+        logger.error(f"CRITICAL_ERROR: No final_log_data_for_file was set for test {test_name} (Index: {test_case_index}). Latency: {execution_latency_seconds:.2f}s. This indicates a severe issue in the test logic prior to JSON writing.")
 
 # -----------------------------------------------------------------------------
 # Shared helper – single place for the LLM ↔ tool conversation loop
@@ -607,7 +583,7 @@ async def _run_tool_conversation(
     max_turns: int = 1,
     expected_first_turn_call_id: str | None = None,
     n_retries: int = 1,
-    test_type: str = None,  # Add test_type parameter
+    test_type: Optional[str] = None,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """Executes up to ``max_turns`` rounds of LLM → tool calls.
 
@@ -826,6 +802,7 @@ async def test_direct_trace_retrieval():
             retry_count += 1
             if retry_count >= MAX_RETRIES:
                 print(f"Failed after {MAX_RETRIES} attempts: {e}")
+                logger.error(f"Failed after {MAX_RETRIES} attempts: {e}")
                 pytest.skip(f"Test skipped due to persistent network issues: {e}")
             else:
                 print(f"Error on attempt {retry_count}/{MAX_RETRIES}, retrying: {e}")

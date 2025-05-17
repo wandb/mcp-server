@@ -5,11 +5,12 @@ A Model Context Protocol (MCP) server for querying [Weights & Biases Weave](http
 - query W&B Models runs, sweeps, artifacts and registry
 - query W&B Weave traces, evaluations and datasets
 - write text and charts to W&B Reports
+- query [wandbot](https://github.com/wandb/wandbot), the W&B support bot
 
 ## Installation
-We provide a helper utility for easily installing the Weights and Biases MCP Server into applications that use a JSON server spec. Please first [install `uv`](https://docs.astral.sh/uv/getting-started/installation/), typically by running `curl -LsSf https://astral.sh/uv/install.sh | sh` on your machine.
+We provide a helper utility for easily installing the Weights & Biases MCP Server into applications that use a JSON server spec. Please first [install `uv`](https://docs.astral.sh/uv/getting-started/installation/), typically by running `curl -LsSf https://astral.sh/uv/install.sh | sh` on your machine or running `brew install uv` on your mac.
 
-From there, you can use the `add_to_client` helper to add the server to your MCP client - inspired by the OpenMCP Server Registry [`add-to-client` pattern](https://www.open-mcp.org/servers)
+From there, the `add_to_client` helper will add or update the required mcp json for popular MCP clients below - inspired by the OpenMCP Server Registry [`add-to-client` pattern](https://www.open-mcp.org/servers)
 
 ### Cursor
 
@@ -30,7 +31,7 @@ uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.codeiu
 ```
 
 ### Claude Desktop:
-First ensure `uv` is installed, you might have to use brew to install instead:
+First ensure `uv` is installed, you might have to use brew to install depite `uv` being available in your terminal:
 
 ```
 brew install uv
@@ -60,82 +61,58 @@ If you don't want to use the helper above, add the following to your MCP client 
 }
 ```
 
-### Running from Source
+### Runing from Source
+
+Run the server from source using:
 
 ```bash
-git clone https://github.com/wandb/wandb-mcp-server.git
-cd wandb-mcp-server && uv venv && source .venv/bin/activate
-uv pip install -e .
+wandb login && uv run src/wandb_mcp_server/server.py
 ```
 
-#### Configuration
-
-1. Create a `.env` file in the root directory with your Weights & Biases API key:
-```
-WANDB_API_KEY=your_api_key_here
-```
-
-#### Running the Server
-
-Run the server using:
-
-```bash
-uv run src/wandb_mcp_server/server.py
-```
 
 ## Available W&B tools
 
 ### wandb
--  **`query_wandb_gql_tool`**: Execute an arbitrary GraphQL query against wandb experiment tracking data including Projects, Runs, Artifacts, Sweeps, Reports, etc.
+-  **`query_wandb_gql_tool`** Execute an arbitrary GraphQL query against wandb experiment tracking data including Projects, Runs, Artifacts, Sweeps, Reports, etc.
   
 ### Weave
-- **`query_weave_traces_tool`**: Queries Weave traces with powerful filtering, sorting, and pagination options.
+- **`query_weave_traces_tool`** Queries Weave traces with powerful filtering, sorting, and pagination options.
   Returns either complete trace data or just metadata to avoid overwhelming the LLM context window.
 
-- **`count_weave_traces_tool`**: Efficiently counts Weave traces matching given filters without returning the trace data.
+- **`count_weave_traces_tool`** Efficiently counts Weave traces matching given filters without returning the trace data.
   Returns both total trace count and root traces count to understand project scope before querying.
 
-### Saving Anaysis
-- **`create_wandb_report_tool`**: Creates a new W&B Report with markdown text and HTML-rendered visualizations.
+
+### W&B Support bot
+- **`query_wandb_support_bot`** Ask [wandbot](https://github.com/wandb/wandbot), our RAG-powered support agent for general help on how to use Weigths & Biases products and features. Powered by the W&B documentation.
+
+### Saving Analysis
+- **`create_wandb_report_tool`** Creates a new W&B Report with markdown text and HTML-rendered visualizations.
   Provides a permanent, shareable document for saving analysis findings and generated charts.
 
-## Usage Tips
+### General W&B helpers
+- **`query_wandb_entity_projects`** List the available W&B entities and projects that can be accessed to give the LLM more context on how to write the correct queries for the above tools.
 
-- When asking broad, general questions such as "what are my best performing runs/evaluations?" its always a good idea to ask the LLM to check that it retrieved all the available runs. Sometimes there can be a tendency from the LLMs to only retrieve the latest runs or the last X runs.
 
-## Usage
+## Usage tips
 
-Ensure you specify the W&B Entity and W&B Project to the LLM/MCP Client. Example query for Claude Desktop:
+#### Provide your W&B project and entity name
+
+LLMs are not mind readers, ensure you specify the W&B Entity and W&B Project to the LLM. Example query for Claude Desktop:
 
 ```markdown
 how many openai.chat traces in the wandb-applied-ai-team/mcp-tests weave project? plot the most recent 5 traces over time and save to a report
 ```
 
-### Client Setup
+#### Avoid asking overly broad questions
 
-#### Claude Desktop
+Questions such as "what is my best evaluation?" are probably overly broad and you'll get to an answer faster by refining your question to be more specific such as: "what eval had the highest f1 score?"
 
-```json
-    "mcpServers": {
-        "weights_and_biases": {
-        "command": "uv",
-        "args": [
-            "--directory",
-            "/ABSOLUTE/PATH/TO/PROJECT",
-            "run",
-            "src/wandb_mcp_server/server.py"
-        ]
-        }
-    }
-```
+#### Ensure all data was retrieved
 
-## TODOs
+When asking broad, general questions such as "what are my best performing runs/evaluations?" its always a good idea to ask the LLM to check that it retrieved all the available runs. The MCP tools are designed to fetch the correct amount of data, but sometimes there can be a tendency from the LLMs to only retrieve the latest runs or the last N runs.
 
-- [ ] Add W&B Models data
-- [ ] Convert to run with npx
-- [ ] Make more configurable: specify wandb URL
-- [ ] Work on reports plots prompt for consistent visualizations
-- [ ] Look into auth solutions
+
 
 ## Troubleshooting
 
@@ -162,7 +139,13 @@ This indicates that the `uv` package manager cannot be found. Fix this with thes
 
 This ensures that the `uv` executable is accessible from standard system paths that are typically included in the PATH for all processes.
 
+
 ## Testing
+
+The tests include a mix of unit tests and integration tests that test the tool calling reliability of a LLM. For now the integration tets only use claude-sonnet-3.7.
+
+
+####Set LLM provider API key
 
 Set the appropriate api key in the `.env` file, e.g.
 
@@ -170,10 +153,14 @@ Set the appropriate api key in the `.env` file, e.g.
 ANTHROPIC_API_KEY=<my_key>
 ```
 
+####Run 1 test file
+
 Run a single test using pytest with 10 workers
 ```
 uv run pytest -s -n 10 tests/test_query_wandb_gql.py
 ```
+
+####Test debugging
 
 Turn on debug logging for a single sample in 1 test file
 
