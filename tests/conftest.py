@@ -25,20 +25,10 @@ os.environ["WANDB_SILENT"] = "true"
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_weave(request):
-    """Initializes Weave once per test session - MODIFIED: init call removed."""
+    """Session-wide setup. Weave.init for the aggregator is handled in pytest_sessionfinish."""
     project_name = f"{WANDB_TEST_SUITE_ENTITY}/{WANDB_TEST_SUITE_PROJECT}"
-    logger.info(f"Session setup: Weave project target for later init: {project_name}")
-    # try:
-    #     # weave.init(project_name) # MODIFIED: Call removed from here
-    #     # logger.info(f"Weave initialized successfully for {project_name} via setup_weave")
-    # except Exception as e:
-    #     logger.error(f"Fatal error during Weave initialization in setup_weave: {e}", exc_info=True)
-    #     pytest.fail(f"Weave initialization failed in setup_weave: {e}", pytrace=False)
-
-    # Optional: Teardown logic if needed
-    # def fin():
-    #     logger.info("Tearing down Weave session (if necessary)...")
-    # request.addfinalizer(fin)
+    logger.info(f"Session setup: Weave project target for later init in session_finish: {project_name}")
+    # weave.init(project_name) # Ensure this is NOT called here for this strategy
 
 def pytest_configure(config):
     config.option.asyncio_default_fixture_loop_scope = "function" 
@@ -75,7 +65,7 @@ def pytest_sessionfinish(session):
         logger.info("Weave SDK not found or EvaluationLogger not imported. Skipping Weave summary logging.")
         return
 
-    logger.info("\nProcessing Weave evaluation results...")
+    logger.info("\nProcessing Weave evaluation results (session_finish hook)...")
     entity = WANDB_TEST_SUITE_ENTITY
     project = WANDB_TEST_SUITE_PROJECT
 
@@ -83,9 +73,10 @@ def pytest_sessionfinish(session):
         logger.info("WANDB_TEST_SUITE_ENTITY or WANDB_TEST_SUITE_PROJECT not set. Skipping Weave summary logging.")
         return
     
+    # Initialize Weave EXPLICITLY here, right before it's needed by EvaluationLogger in this hook.
     try:
-        logger.info(f"Initializing Weave EXPLICITLY in session_finish: entity='{entity}', project='{project}'")
-        weave.init(f"{entity}/{project}") # This is now the primary init for this process
+        logger.info(f"Initializing Weave in session_finish for: entity='{entity}', project='{project}'")
+        weave.init(f"{entity}/{project}") 
         logger.info(f"Weave initialized successfully in session_finish for {entity}/{project}")
     except Exception as e:
         logger.error(f"Error initializing Weave in pytest_sessionfinish: {e}. Skipping Weave summary logging.", exc_info=True)
