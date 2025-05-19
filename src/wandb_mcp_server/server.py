@@ -52,8 +52,12 @@ gql_transport_logger.setLevel(logging.ERROR)
 load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = get_rich_logger("weave-mcp-server")
+logging.basicConfig(level=logging.INFO) # Sets root logger level and default handler
+logger = get_rich_logger(
+    "weave-mcp-server", 
+    default_level_str="WARNING", 
+    env_var_name="MCP_SERVER_LOG_LEVEL"
+)
 
 # Create an MCP server using FastMCP
 mcp = FastMCP("weave-mcp-server")

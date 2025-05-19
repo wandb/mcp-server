@@ -4,6 +4,7 @@ import logging
 import netrc
 import os
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
@@ -177,8 +178,17 @@ def merge_metadata(metadata_list: List[Dict]) -> Dict:
     return merged
 
 
-def get_rich_logger(name: str, propagate: bool = False) -> logging.Logger:
-    """Configure and return a logger with RichHandler."""
+def get_rich_logger(
+    name: str,
+    propagate: bool = False,
+    default_level_str: str = "INFO",
+    env_var_name: Optional[str] = None
+) -> logging.Logger:
+    """
+    Configure and return a logger with RichHandler.
+    The log level can be set via an environment variable if `env_var_name` is provided.
+    Otherwise, it defaults to `default_level_str`.
+    """
     logger = logging.getLogger(name)
     _rich_handler = RichHandler(
         show_time=True, show_level=True, show_path=False, markup=True
@@ -186,7 +196,44 @@ def get_rich_logger(name: str, propagate: bool = False) -> logging.Logger:
     if logger.hasHandlers():
         logger.handlers.clear()
     logger.addHandler(_rich_handler)
-    logger.setLevel(logging.DEBUG)
+
+    # Determine the effective log level string
+    # Start with the function's default_level_str (e.g., "INFO")
+    effective_level_str = default_level_str.upper()
+    source_of_level = f"function default ('{default_level_str}')"
+
+    if env_var_name:
+        env_level_value = os.environ.get(env_var_name)
+        if env_level_value:
+            effective_level_str = env_level_value.upper()
+            source_of_level = f"environment variable '{env_var_name}' ('{env_level_value}')"
+
+    # Attempt to convert the string to a logging level integer
+    final_log_level = getattr(logging, effective_level_str, None)
+
+    # If conversion failed, issue a warning and determine a fallback level.
+    if not isinstance(final_log_level, int):
+        warning_msg_parts = [
+            f"Warning: Invalid log level string '{effective_level_str}' from {source_of_level} for logger '{name}'.",
+            "Valid levels are DEBUG, INFO, WARNING, ERROR, CRITICAL."
+        ]
+        
+        # Check if the issue was with an environment variable and if the original default_level_str is valid
+        if env_var_name and os.environ.get(env_var_name) and effective_level_str != default_level_str.upper():
+            fallback_to_default_level = getattr(logging, default_level_str.upper(), None)
+            if isinstance(fallback_to_default_level, int):
+                final_log_level = fallback_to_default_level
+                warning_msg_parts.append(f"Falling back to function default '{default_level_str.upper()}'.")
+            else: # Function default is also bad, use hardcoded INFO
+                final_log_level = logging.INFO
+                warning_msg_parts.append(f"Function default '{default_level_str.upper()}' also invalid. Falling back to INFO.")
+        else: # No env var was specified, or env var was not set, or default_level_str itself was bad
+            final_log_level = logging.INFO # Hardcoded ultimate fallback
+            warning_msg_parts.append("Falling back to INFO.")
+        
+        print(" ".join(warning_msg_parts), file=sys.stderr)
+
+    logger.setLevel(final_log_level)
     logger.propagate = propagate
     return logger
 
