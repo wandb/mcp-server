@@ -3,45 +3,62 @@
 Weights & Biases MCP Server - A Model Context Protocol server for querying Weights & Biases data.
 """
 
+import io
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-import sys # Added for stdout redirection
-import io # Added for stdout redirection
 
+import wandb
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
-import wandb # Added for wandb.login and wandb.setup
 
 from wandb_mcp_server.query_models import list_entity_projects
-from wandb_mcp_server.query_weave import  paginated_query_traces
-from wandb_mcp_server.tools.count_traces import count_traces, COUNT_WEAVE_TRACES_TOOL_DESCRIPTION
-from wandb_mcp_server.tools.query_wandb_gql import query_paginated_wandb_gql, QUERY_WANDB_GQL_TOOL_DESCRIPTION
-from wandb_mcp_server.tools.query_wandbot import query_wandbot_api, WANDBOT_TOOL_DESCRIPTION
 from wandb_mcp_server.report import create_report
 from wandb_mcp_server.tool_prompts import (
     CREATE_WANDB_REPORT_TOOL_DESCRIPTION,
     LIST_ENTITY_PROJECTS_TOOL_DESCRIPTION,
-    QUERY_WEAVE_TRACES_TOOL_DESCRIPTION
+)
+from wandb_mcp_server.mcp_tools.count_traces import (
+    COUNT_WEAVE_TRACES_TOOL_DESCRIPTION,
+    count_traces,
+)
+from wandb_mcp_server.mcp_tools.query_wandb_gql import (
+    QUERY_WANDB_GQL_TOOL_DESCRIPTION,
+    query_paginated_wandb_gql,
+)
+from wandb_mcp_server.mcp_tools.query_wandbot import (
+    WANDBOT_TOOL_DESCRIPTION,
+    query_wandbot_api,
+)
+from wandb_mcp_server.mcp_tools.query_weave import (
+    QUERY_WEAVE_TRACES_TOOL_DESCRIPTION,
+    query_paginated_weave_traces,
 )
 from wandb_mcp_server.trace_utils import DateTimeEncoder
-from wandb_mcp_server.utils import get_server_args
+from wandb_mcp_server.utils import get_rich_logger, get_server_args
+from wandb_mcp_server.weave_api.models import QueryResult
 
 # Silence logging to avoid interfering with MCP server
 os.environ["WANDB_SILENT"] = "True"
-weave_logger = logging.getLogger("weave")
+os.environ["WEAVE_SILENT"] = "True"
+weave_logger = get_rich_logger("weave")
 weave_logger.setLevel(logging.ERROR)
-gql_transport_logger = logging.getLogger("gql.transport.requests")
+gql_transport_logger = get_rich_logger("gql.transport.requests")
 gql_transport_logger.setLevel(logging.ERROR)
 
 # Load environment variables
 load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("weave-mcp-server")
+logging.basicConfig(level=logging.INFO) # Sets root logger level and default handler
+logger = get_rich_logger(
+    "weave-mcp-server", 
+    default_level_str="WARNING", 
+    env_var_name="MCP_SERVER_LOG_LEVEL"
+)
 
 # Create an MCP server using FastMCP
 mcp = FastMCP("weave-mcp-server")
@@ -51,21 +68,21 @@ mcp = FastMCP("weave-mcp-server")
 async def query_weave_traces_tool(
     entity_name: str,
     project_name: str,
-    filters: Dict[str, Any] | None = None,
+    filters: Dict = {},
     sort_by: str = "started_at",
     sort_direction: str = "desc",
-    limit: int | None = None,
+    limit: int = None,
     include_costs: bool = True,
     include_feedback: bool = True,
-    columns: List[str] | None = None,
-    expand_columns: List[str] | None = None,
-    truncate_length: int | None = 200,
+    columns: list = [],
+    expand_columns: list = [],
+    truncate_length: int = 200,
     return_full_data: bool = False,
     metadata_only: bool = False,
 ) -> str:
     try:
         # Use paginated query with chunks of 20
-        result = await paginated_query_traces(
+        result: QueryResult = await query_paginated_weave_traces(
             entity_name=entity_name,
             project_name=project_name,
             chunk_size=50,
@@ -81,12 +98,11 @@ async def query_weave_traces_tool(
             return_full_data=return_full_data,
             metadata_only=metadata_only,
         )
-
-        return json.dumps(result, cls=DateTimeEncoder)
+        return result.model_dump_json()
 
     except Exception as e:
-        logger.error(f"Error calling tool: {e}")
-        return f"Error querying traces: {str(e)}"
+        logger.error(f"Error in query_weave_traces_tool: {e}", exc_info=True)
+        raise e
 
 
 @mcp.tool(description=COUNT_WEAVE_TRACES_TOOL_DESCRIPTION)

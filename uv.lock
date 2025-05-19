@@ -1634,6 +1634,7 @@ dependencies = [
     { name = "networkx" },
     { name = "pytest" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "simple-parsing" },
     { name = "tiktoken" },
     { name = "wandb" },
@@ -1658,11 +1659,12 @@ requires-dist = [
     { name = "pytest", specifier = ">=8.3.1" },
     { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.6.1" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "simple-parsing", specifier = ">=0.1.7" },
     { name = "tiktoken", specifier = ">=0.9.0" },
     { name = "wandb", specifier = ">=0.19.8" },
     { name = "wandb-workspaces", specifier = ">=0.1.12" },
-    { name = "weave", specifier = ">=0.51.45" },
+    { name = "weave", specifier = ">=0.51.47" },
 ]
 provides-extras = ["test"]
 
@@ -1681,7 +1683,7 @@ wheels = [
 
 [[package]]
 name = "weave"
-version = "0.51.45"
+version = "0.51.47"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diskcache" },
@@ -1697,9 +1699,9 @@ dependencies = [
     { name = "uuid-utils" },
     { name = "wandb" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b7/36/76be0388f14d8d1be05d1a5bd55f25be421bd059e2bed66dc2cced2ddb2c/weave-0.51.45.tar.gz", hash = "sha256:e18db4773acc28e9326e512f1e63c8ab04c0fdeb15035d29902bce820d8c0e10", size = 392787 }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/0e/30f4323aa146698b9bf688f8a3d3d981937863632fe4eb7b71de5de7e1fc/weave-0.51.47.tar.gz", hash = "sha256:9cbec8e7bccbb7aab4cb815179af88f979be92d2a96633b0aa4a89a5342d24a3", size = 401833 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/59/8e3bba556bcad4852b5f24dbdff0d52f660579a75fbc4f84b7c54e01020b/weave-0.51.45-py3-none-any.whl", hash = "sha256:586e692945a69ef6cedbffd30e2e84a40979ed8486a65d71f29320000e60f91b", size = 501755 },
+    { url = "https://files.pythonhosted.org/packages/ca/7d/c3637aa7cbe66e5166fd253d47b27675114693c6940e6cf7691893c6c7b6/weave-0.51.47-py3-none-any.whl", hash = "sha256:0408470a17371a686d701d03fa252c2af98ad667b201b35d200fb2078583fe7a", size = 512410 },
 ]
 
 [[package]]
