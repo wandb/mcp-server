@@ -5,13 +5,15 @@ This module provides high-level services for querying and processing Weave trace
 It orchestrates the client, query builder, and processor components.
 """
 
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Set
 
+from wandb_mcp_server.utils import get_rich_logger, get_server_args
 from wandb_mcp_server.weave_api.client import WeaveApiClient
 from wandb_mcp_server.weave_api.models import QueryResult
 from wandb_mcp_server.weave_api.processors import TraceProcessor
 from wandb_mcp_server.weave_api.query_builder import QueryBuilder
-from wandb_mcp_server.utils import get_rich_logger
 
 # Import CallSchema to validate column names
 try:
@@ -47,21 +49,25 @@ class TraceService:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
         server_url: Optional[str] = None,
         retries: int = 3,
         timeout: int = 10,
     ):
-        """Initialize the Trace service.
+        """Initialize the TraceService.
 
         Args:
-            api_key: Weights & Biases API key. If not provided, will try to get from environment.
-            server_url: Weave API server URL. If not provided, will try to get from environment.
-            retries: Number of retries for HTTP requests.
-            timeout: Timeout for HTTP requests in seconds.
+            server_url: Weave API server URL. Defaults to 'https://trace.wandb.ai'.
+            retries: Number of retries for failed requests.
+            timeout: Request timeout in seconds.
         """
+        # Call get_server_args() to ensure API key is loaded from .netrc or env var
+        # and a warning is logged by get_server_args if no key is found.
+        server_config = get_server_args()
+
+        # Pass the resolved API key to WeaveApiClient.
+        # If server_config.wandb_api_key is None or "", WeaveApiClient will raise its ValueError.
         self.client = WeaveApiClient(
-            api_key=api_key,
+            api_key=server_config.wandb_api_key,
             server_url=server_url,
             retries=retries,
             timeout=timeout,
