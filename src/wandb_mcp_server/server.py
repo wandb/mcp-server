@@ -98,8 +98,7 @@ async def query_weave_traces_tool(
             return_full_data=return_full_data,
             metadata_only=metadata_only,
         )
-        return result.model_dump_json(cls=DateTimeEncoder)
-        # return json.dumps(result, cls=DateTimeEncoder)
+        return json.dumps(result.model_dump_json(), cls=DateTimeEncoder)
 
     except Exception as e:
         logger.error(f"Error calling tool: {e}")
