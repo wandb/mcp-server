@@ -98,11 +98,11 @@ async def query_weave_traces_tool(
             return_full_data=return_full_data,
             metadata_only=metadata_only,
         )
-        return json.dumps(result.model_dump_json(), cls=DateTimeEncoder)
+        return result.model_dump_json()
 
     except Exception as e:
-        logger.error(f"Error calling tool: {e}")
-        return f"Error querying traces: {str(e)}"
+        logger.error(f"Error in query_weave_traces_tool: {e}", exc_info=True)
+        raise e
 
 
 @mcp.tool(description=COUNT_WEAVE_TRACES_TOOL_DESCRIPTION)
