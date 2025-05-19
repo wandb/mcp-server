@@ -39,6 +39,7 @@ from wandb_mcp_server.mcp_tools.query_weave import (
 )
 from wandb_mcp_server.trace_utils import DateTimeEncoder
 from wandb_mcp_server.utils import get_rich_logger, get_server_args
+from wandb_mcp_server.weave_api.models import QueryResult
 
 # Silence logging to avoid interfering with MCP server
 os.environ["WANDB_SILENT"] = "True"
@@ -81,7 +82,7 @@ async def query_weave_traces_tool(
 ) -> str:
     try:
         # Use paginated query with chunks of 20
-        result = await query_paginated_weave_traces(
+        result: QueryResult = await query_paginated_weave_traces(
             entity_name=entity_name,
             project_name=project_name,
             chunk_size=50,
@@ -97,8 +98,8 @@ async def query_weave_traces_tool(
             return_full_data=return_full_data,
             metadata_only=metadata_only,
         )
-
-        return json.dumps(result, cls=DateTimeEncoder)
+        return result.model_dump_json(cls=DateTimeEncoder)
+        # return json.dumps(result, cls=DateTimeEncoder)
 
     except Exception as e:
         logger.error(f"Error calling tool: {e}")

@@ -397,4 +397,5 @@ async def query_paginated_weave_traces(
         # Convert back to QueryResult
         result = QueryResult.model_validate(result_dict)
 
+    assert isinstance(result, QueryResult), f"Result type must be a QueryResult, found: {type(result)}"
     return result

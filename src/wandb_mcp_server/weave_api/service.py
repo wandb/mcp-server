@@ -553,6 +553,7 @@ class TraceService:
             metadata_only=metadata_only,
         )
         logger.debug(f"Final result from query_paginated_traces:\n\n{len(result.model_dump_json(indent=2))}\n")
+        assert isinstance(result, QueryResult), f"Result type must be a QueryResult, found: {type(result)}"
         return result
         
     def _query_for_cost_sorting(
