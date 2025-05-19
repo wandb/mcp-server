@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 import simple_parsing
 from rich.logging import RichHandler
+from rich.console import Console
 
 os.environ["WANDB_SILENT"] = "True"
 os.environ["WEAVE_SILENT"] = "True"
@@ -55,8 +56,13 @@ def get_rich_logger(
     Otherwise, it defaults to `default_level_str`.
     """
     logger = logging.getLogger(name)
+    stderr_console = Console(stderr=True)
     _rich_handler = RichHandler(
-        show_time=True, show_level=True, show_path=False, markup=True
+        console=stderr_console,
+        show_time=True,
+        show_level=True,
+        show_path=False,
+        markup=True
     )
     if logger.hasHandlers():
         logger.handlers.clear()
