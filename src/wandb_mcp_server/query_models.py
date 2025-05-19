@@ -65,7 +65,7 @@ def list_entity_projects(entity: str | None = None) -> Dict[str, List[Dict[str, 
             project_dict = {
                 "name": project.name,
                 "entity": project.entity,
-                "description": project.description,
+                "description": getattr(project, "description", None),
                 "visibility": project.visibility,
                 "created_at": project.created_at,
                 "updated_at": project.updated_at,
