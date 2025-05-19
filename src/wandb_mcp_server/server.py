@@ -74,9 +74,9 @@ async def query_weave_traces_tool(
     limit: int = None,
     include_costs: bool = True,
     include_feedback: bool = True,
-    columns: list | None = None,
-    expand_columns: list | None = None,
-    truncate_length: int | None = 200,
+    columns: list = [],
+    expand_columns: list = [],
+    truncate_length: int = 200,
     return_full_data: bool = False,
     metadata_only: bool = False,
 ) -> str:
