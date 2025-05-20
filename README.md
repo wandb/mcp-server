@@ -8,12 +8,12 @@
 
 # Weights & Biases MCP Server
 
-A Model Context Protocol (MCP) server for querying [Weights & Biases Weave](https://www.wandb.ai/) data. This server allows a MCP Client to:
+A Model Context Protocol (MCP) server for querying [Weights & Biases](https://www.wandb.ai/) data. This server allows a MCP Client to:
 
 - query W&B Models runs, sweeps, artifacts and registry
 - query W&B Weave traces, evaluations and datasets
 - write text and charts to W&B Reports
-- query [wandbot](https://github.com/wandb/wandbot), the W&B support bot
+- query [wandbot](https://github.com/wandb/wandbot), the W&B support bot, for general W&B feature questions
 
 ## Installation
 We provide a helper utility for easily installing the Weights & Biases MCP Server into applications that use a JSON server spec. Please first [install `uv`](https://docs.astral.sh/uv/getting-started/installation/), typically by running `curl -LsSf https://astral.sh/uv/install.sh | sh` on your machine or running `brew install uv` on your mac.
