@@ -129,8 +129,8 @@ are unsure of the exact op name.
     filter to return the child traces.
     - if a parent id (or parentId) is provided then ensure to use that filter in the query.
     - for questions where both a child call name of an evaluation and an evaluation id or name are provided, always ensure \
-that you first correctly get the evaluation id, and then use it in the query for the child traces. Otherwise there is a risk \
-of returning traces that do not belong to the evaluation that was given.
+that you first correctly get the evaluation id, and then use it as the parent_id in the query for the child traces. Otherwise \
+there is a risk of returning traces that do not belong to the evaluation that was given.
 
 - Weave nomenclature: Note that users might refer to weave ops as "traces" or "calls" or "traces" as "ops".
 
