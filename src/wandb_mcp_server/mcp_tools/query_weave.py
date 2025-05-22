@@ -128,6 +128,9 @@ are unsure of the exact op name.
     for each sample in an evaluation dataset. If asked about individual rows in an evaluation then use the parent_ids
     filter to return the child traces.
     - if a parent id (or parentId) is provided then ensure to use that filter in the query.
+    - for questions where both a child call name of an evaluation and an evaluation id or name are provided, always ensure \
+that you first correctly get the evaluation id, and then use it in the query for the child traces. Otherwise there is a risk \
+of returning traces that do not belong to the evaluation that was given.
 
 - Weave nomenclature: Note that users might refer to weave ops as "traces" or "calls" or "traces" as "ops".
 
