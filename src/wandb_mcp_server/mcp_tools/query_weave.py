@@ -130,12 +130,12 @@ and always get a count of the total number of child traces in this eval by filte
 and values.
     - Always be explicit about the amount of data returned and limits used in your query - return to the user the count of traces \
 analysed. 
-    - Always stay filterd on the evaluation id (filter by `parent_id`) unless specifically asked questions across different evaulations.
+    - Always stay filterd on the evaluation id (filter by `parent_id`) unless specifically asked questions across different evaulations, e.g. \
+if a parent id (or parentId) is provided then ensure to use that filter in the query.
     - filter for traces with `op_name_contains = "Evaluation.evaluate"` as a first step. These ops are parent traces that contain
     aggregated stats and scores about the evaluation. The child traces of these ops are the actual evaluation results
     for each sample in an evaluation dataset. If asked about individual rows in an evaluation then use the parent_ids
     filter to return the child traces.
-    - if a parent id (or parentId) is provided then ensure to use that filter in the query.
     - for questions where both a child call name of an evaluation and an evaluation id or name are provided, always ensure \
 that you first correctly get the evaluation id, and then use it as the parent_id in the query for the child traces. Otherwise \
 there is a risk of returning traces that do not belong to the evaluation that was given.
