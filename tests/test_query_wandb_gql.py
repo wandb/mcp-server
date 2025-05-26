@@ -71,7 +71,9 @@ if not ANTHROPIC_API_KEY:
 
 TEST_WANDB_ENTITY = "wandb-applied-ai-team"
 TEST_WANDB_PROJECT = "mcp-tests"
-MODEL_NAME = "claude-3-7-sonnet-20250219"
+# MODEL_NAME = "claude-3-7-sonnet-20250219"
+# MODEL_NAME = "claude-4-sonnet-20250514"
+MODEL_NAME = "claude-4-opus-20250514"
 CORRECTNESS_MODEL_NAME = "claude-3-5-haiku-20241022"
 
 # -----------------------------------------------------------------------------

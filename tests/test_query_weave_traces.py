@@ -73,6 +73,10 @@ TEST_WANDB_ENTITY = "wandb-applied-ai-team"
 TEST_WANDB_PROJECT = "mcp-tests"
 TEST_CALL_ID = "01958ab9-3c68-7c23-8ccd-c135c7037769"
 
+# MODEL_NAME = "claude-3-7-sonnet-20250219"
+# MODEL_NAME = "claude-4-sonnet-20250514"
+MODEL_NAME = "claude-4-opus-20250514"
+
 # -----------------------------------------------------------------------------
 # Baseline trace – fetched once so that each test has stable expectations
 # -----------------------------------------------------------------------------
@@ -577,7 +581,7 @@ async def test_query_weave_trace(sample, weave_results_dir):
                 else:
                     messages = [{"role": "user", "content": query_text}]
                     response = call_anthropic(
-                        model_name="claude-3-7-sonnet-20250219",
+                        model_name=MODEL_NAME,
                         messages=messages,
                         tools=TOOLS,
                     )
@@ -841,7 +845,7 @@ async def _run_tool_conversation(
         while not anthropic_success and anthropic_retry < n_retries:
             try:
                 response = call_anthropic(
-                    model_name="claude-3-7-sonnet-20250219",
+                    model_name=MODEL_NAME,
                     messages=messages,
                     tools=TOOLS,
                 )
