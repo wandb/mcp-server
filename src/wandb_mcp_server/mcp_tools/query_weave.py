@@ -156,11 +156,13 @@ Args:
             to return the data from all child traces.
         - trace_id: Filter by a specific `trace_id` (e.g., "01958ab9-3c67-7c72-92bf-d023fa5a0d4d").
             A `trace_id` groups multiple calls/spans. Use if the user explicitly say they provided a "trace_id" for a group of operations.
+            Always first try to filter by `call_ids` if a user provides an ID, before trying to filter by `trace_id`.
         - call_ids: Filter by specific `call_id`s (also known as Span IDs) (string or list of strings, e.g., ["01958ab9-3c68-7c23-8ccd-c135c7037769"]).
             **GUIDANCE**: `call_id` (Span ID) identifies a *single* operation/span and is typically found in Weave UI URLs.
             If a user provides an ID for a specific item they're viewing, **prefer `call_ids`**.
             Format as a list: `{"call_ids": ["user_provided_id"]}`.
-        - parent_ids: Return traces that are children of the given parent trace ids (string or list of strings)
+        - parent_ids: Return traces that are children of the given parent trace ids (string or list of strings). Ensure you use this \
+if given an evaluation trace id or name.
         - status: Filter by trace status, defined as whether or not the trace had an exception or not. Can be
             `success` or `error`.
             NOTE: When users ask for "failed", "wrong", or "incorrect" traces, use `status:'error'` or 
