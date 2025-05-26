@@ -123,11 +123,22 @@ before querying for them as query_trace_tool can return a lot of data.
 are unsure of the exact op name.
 
 - Weave Evaluations: If asked about weave evaluations or evals traces:
+    - Evals are complicated to query, prompt the user with follow up questions if needed. 
+    - First, always try and oritent yourself - pull a summary of the evaluation, get all of the top level column names in the eval \
+and always get a count of the total number of child traces in this eval by filtering by parent_id and using the count_traces tool.
+    - As part of orienting yourself, just pull a subset of child traces from the eval, maybe 3 to 5, to understand the column structure \
+and values.
+    - Always be explicit about the amount of data returned and limits used in your query - return to the user the count of traces \
+analysed. 
+    - Always stay filterd on the evaluation id (filter by `parent_id`) unless specifically asked questions across different evaulations, e.g. \
+if a parent id (or parentId) is provided then ensure to use that filter in the query.
     - filter for traces with `op_name_contains = "Evaluation.evaluate"` as a first step. These ops are parent traces that contain
     aggregated stats and scores about the evaluation. The child traces of these ops are the actual evaluation results
     for each sample in an evaluation dataset. If asked about individual rows in an evaluation then use the parent_ids
     filter to return the child traces.
-    - if a parent id (or parentId) is provided then ensure to use that filter in the query.
+    - for questions where both a child call name of an evaluation and an evaluation id or name are provided, always ensure \
+that you first correctly get the evaluation id, and then use it as the parent_id in the query for the child traces. Otherwise \
+there is a risk of returning traces that do not belong to the evaluation that was given.
 
 - Weave nomenclature: Note that users might refer to weave ops as "traces" or "calls" or "traces" as "ops".
 
@@ -145,11 +156,13 @@ Args:
             to return the data from all child traces.
         - trace_id: Filter by a specific `trace_id` (e.g., "01958ab9-3c67-7c72-92bf-d023fa5a0d4d").
             A `trace_id` groups multiple calls/spans. Use if the user explicitly say they provided a "trace_id" for a group of operations.
+            Always first try to filter by `call_ids` if a user provides an ID, before trying to filter by `trace_id`.
         - call_ids: Filter by specific `call_id`s (also known as Span IDs) (string or list of strings, e.g., ["01958ab9-3c68-7c23-8ccd-c135c7037769"]).
             **GUIDANCE**: `call_id` (Span ID) identifies a *single* operation/span and is typically found in Weave UI URLs.
             If a user provides an ID for a specific item they're viewing, **prefer `call_ids`**.
             Format as a list: `{"call_ids": ["user_provided_id"]}`.
-        - parent_ids: Return traces that are children of the given parent trace ids (string or list of strings)
+        - parent_ids: Return traces that are children of the given parent trace ids (string or list of strings). Ensure you use this \
+if given an evaluation trace id or name.
         - status: Filter by trace status, defined as whether or not the trace had an exception or not. Can be
             `success` or `error`.
             NOTE: When users ask for "failed", "wrong", or "incorrect" traces, use `status:'error'` or 
@@ -195,7 +208,8 @@ Args:
             deleted_at: typing.Optional[datetime.datetime]
     expand_columns: List of columns to expand in the results. Defaults to None
     truncate_length: Maximum length for string values in weave traces. Defaults to 200
-    return_full_data: Whether to include full untruncated trace data. Defaults to False
+    return_full_data: Whether to include full untruncated trace data. If True, the `truncate_length` parameter is ignored. If  \
+`False` returns truncation_length = 0, no values for the column keys are returned. Defaults to True.
     metadata_only: Return only metadata without traces. Defaults to False
 
 Returns:
@@ -245,6 +259,7 @@ def query_traces(
     include_feedback: bool = True,
     columns: List[str] = [],
     expand_columns: List[str] = [],
+    return_full_data: bool = True,
     api_key: str = "",
     query_expr: Any = None,  # We ignore this in the new implementation
     request_timeout: int = 10,
@@ -276,7 +291,7 @@ def query_traces(
         include_feedback=include_feedback,
         columns=columns,
         expand_columns=expand_columns,
-        return_full_data=True,  # Match original behavior
+        return_full_data=return_full_data,  # Match original behavior
         metadata_only=False,
     )
 
@@ -318,7 +333,7 @@ async def query_paginated_weave_traces(
     columns: List[str] = [],
     expand_columns: List[str] = [],
     truncate_length: Optional[int] = 200,
-    return_full_data: bool = False,
+    return_full_data: bool = True,
     metadata_only: bool = False,
     api_key: Optional[str] = None,
     retries: int = 3,
