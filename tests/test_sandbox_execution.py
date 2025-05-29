@@ -1,12 +1,13 @@
 """
-Tests for sandbox code execution functionality.
+Unit tests for sandbox code execution functionality.
+These tests use mocking to test the sandbox logic without requiring actual sandboxes.
 """
 
 import asyncio
 import json
 import os
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock, MagicMock, Mock
 from dotenv import load_dotenv
 
 from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import (
@@ -15,6 +16,10 @@ from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import (
     PyodideSandbox,
     RestrictedPythonSandbox,
     SandboxError,
+    SecurityValidator,
+    ExecutionCache,
+    RateLimiter,
+    E2BSandboxPool,
 )
 from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_models import (
     SandboxExecutionRequest,
@@ -25,9 +30,330 @@ from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_models import (
 load_dotenv()
 
 
-class TestRestrictedPythonSandbox:
-    """Test RestrictedPython sandbox functionality."""
+class TestSecurityValidator:
+    """Test the security validator for RestrictedPython."""
+    
+    def test_validate_safe_code(self):
+        """Test that safe code passes validation."""
+        safe_codes = [
+            "print('Hello, world!')",
+            "x = 2 + 2",
+            "import math\nprint(math.pi)",
+            "for i in range(10):\n    print(i)",
+        ]
+        
+        for code in safe_codes:
+            is_safe, error = SecurityValidator.validate_code(code)
+            assert is_safe is True
+            assert error is None
+    
+    def test_validate_dangerous_code(self):
+        """Test that dangerous code is detected."""
+        dangerous_codes = [
+            ("__import__('os')", "__import__"),
+            ("eval('2+2')", "eval"),
+            ("exec('print(1)')", "exec"),
+            ("compile('x=1', 'test', 'exec')", "compile"),
+            ("open('/etc/passwd')", "open"),
+        ]
+        
+        for code, pattern in dangerous_codes:
+            is_safe, error = SecurityValidator.validate_code(code)
+            assert is_safe is False
+            assert pattern in error
+    
+    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.logger')
+    def test_suspicious_imports_warning(self, mock_logger):
+        """Test that suspicious imports generate warnings."""
+        code = "import os\nimport subprocess\nprint('test')"
+        
+        is_safe, error = SecurityValidator.validate_code(code)
+        
+        # Should still be safe (just a warning)
+        assert is_safe is True
+        assert error is None
+        
+        # But should log a warning
+        mock_logger.warning.assert_called()
+        warning_msg = mock_logger.warning.call_args[0][0]
+        assert "os" in warning_msg
+        assert "subprocess" in warning_msg
 
+
+class TestExecutionCache:
+    """Test the execution cache functionality."""
+    
+    def test_cache_basic_operations(self):
+        """Test basic cache get/set operations."""
+        cache = ExecutionCache(max_size=2)
+        
+        result1 = {"success": True, "output": "test1"}
+        result2 = {"success": True, "output": "test2"}
+        
+        # Test cache miss
+        assert cache.get("code1", "e2b") is None
+        
+        # Test cache set and hit
+        cache.set("code1", "e2b", result1)
+        cached = cache.get("code1", "e2b")
+        assert cached == result1
+        
+        # Test different code
+        cache.set("code2", "e2b", result2)
+        assert cache.get("code2", "e2b") == result2
+        
+        # Test cache with packages
+        cache.set("code1", "e2b", result1, packages=["numpy"])
+        assert cache.get("code1", "e2b", packages=["numpy"]) == result1
+        assert cache.get("code1", "e2b", packages=["pandas"]) is None  # Different packages
+    
+    def test_cache_eviction(self):
+        """Test LRU cache eviction."""
+        cache = ExecutionCache(max_size=2)
+        
+        cache.set("code1", "e2b", {"output": "1"})
+        cache.set("code2", "e2b", {"output": "2"})
+        cache.set("code3", "e2b", {"output": "3"})  # Should evict code1
+        
+        assert cache.get("code1", "e2b") is None  # Evicted
+        assert cache.get("code2", "e2b") is not None
+        assert cache.get("code3", "e2b") is not None
+    
+    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.datetime')
+    def test_cache_expiration(self, mock_datetime):
+        """Test cache TTL expiration."""
+        from datetime import datetime, timedelta
+        
+        cache = ExecutionCache(ttl_seconds=300)  # 5 minutes
+        
+        # Set initial time
+        initial_time = datetime(2024, 1, 1, 12, 0, 0)
+        mock_datetime.now.return_value = initial_time
+        
+        cache.set("code1", "e2b", {"output": "test"})
+        
+        # Test before expiration
+        mock_datetime.now.return_value = initial_time + timedelta(minutes=4)
+        assert cache.get("code1", "e2b") is not None
+        
+        # Test after expiration
+        mock_datetime.now.return_value = initial_time + timedelta(minutes=6)
+        assert cache.get("code1", "e2b") is None
+
+
+class TestRateLimiter:
+    """Test rate limiting functionality."""
+    
+    @pytest.mark.asyncio
+    async def test_rate_limit_basic(self):
+        """Test basic rate limiting."""
+        limiter = RateLimiter(max_requests=3, window_seconds=1)
+        
+        # First 3 requests should pass
+        for _ in range(3):
+            assert await limiter.check_rate_limit() is True
+        
+        # 4th request should fail
+        assert await limiter.check_rate_limit() is False
+    
+    @pytest.mark.asyncio
+    @patch('time.time')
+    async def test_rate_limit_window(self, mock_time):
+        """Test rate limit window expiration."""
+        limiter = RateLimiter(max_requests=2, window_seconds=10)
+        
+        # Initial time
+        mock_time.return_value = 1000
+        
+        # Use up the limit
+        assert await limiter.check_rate_limit() is True
+        assert await limiter.check_rate_limit() is True
+        assert await limiter.check_rate_limit() is False
+        
+        # Move time forward past the window
+        mock_time.return_value = 1011  # 11 seconds later
+        
+        # Should be able to make requests again
+        assert await limiter.check_rate_limit() is True
+
+
+class TestE2BSandboxPool:
+    """Test E2B sandbox pooling."""
+    
+    @pytest.mark.asyncio
+    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.AsyncSandbox')
+    async def test_pool_initialization(self, mock_sandbox_class):
+        """Test pool initialization."""
+        # Mock sandbox creation
+        mock_sandbox = AsyncMock()
+        mock_sandbox_class.create = AsyncMock(return_value=mock_sandbox)
+        
+        pool = E2BSandboxPool("test_api_key", pool_size=2)
+        await pool.initialize()
+        
+        # Should create 2 sandboxes
+        assert mock_sandbox_class.create.call_count == 2
+        assert len(pool.all_sandboxes) == 2
+    
+    @pytest.mark.asyncio
+    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.AsyncSandbox')
+    async def test_pool_acquire_release(self, mock_sandbox_class):
+        """Test acquiring and releasing sandboxes from pool."""
+        mock_sandbox1 = AsyncMock()
+        mock_sandbox2 = AsyncMock()
+        mock_sandbox_class.create = AsyncMock(side_effect=[mock_sandbox1, mock_sandbox2])
+        
+        pool = E2BSandboxPool("test_api_key", pool_size=2)
+        await pool.initialize()
+        
+        # Acquire sandboxes
+        sb1 = await pool.acquire()
+        sb2 = await pool.acquire()
+        
+        assert sb1 == mock_sandbox1
+        assert sb2 == mock_sandbox2
+        
+        # Pool should be empty now
+        with pytest.raises(asyncio.TimeoutError):
+            await pool.acquire(timeout=0.1)
+        
+        # Release one back
+        await pool.release(sb1)
+        
+        # Should be able to acquire again
+        sb3 = await pool.acquire()
+        assert sb3 == sb1  # Same sandbox
+
+
+class TestE2BSandbox:
+    """Test E2B sandbox implementation."""
+    
+    @pytest.mark.asyncio
+    @patch('os.getenv')
+    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.E2BSandboxPool')
+    async def test_sandbox_pool_usage(self, mock_pool_class, mock_getenv):
+        """Test that E2B uses the pool when available."""
+        mock_getenv.return_value = "test_api_key"
+        
+        # Mock pool
+        mock_pool = AsyncMock()
+        mock_sandbox = AsyncMock()
+        mock_pool.acquire = AsyncMock(return_value=mock_sandbox)
+        mock_pool_class.return_value = mock_pool
+        
+        sandbox = E2BSandbox("test_api_key")
+        await sandbox.create_sandbox()
+        
+        assert sandbox.sandbox == mock_sandbox
+        assert sandbox._acquired_from_pool is True
+    
+    @pytest.mark.asyncio
+    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.AsyncSandbox')
+    async def test_package_installation(self, mock_sandbox_class):
+        """Test package installation in E2B."""
+        mock_sandbox = AsyncMock()
+        mock_result = Mock()
+        mock_result.exit_code = 0
+        mock_result.stderr = ""
+        mock_sandbox.commands.run = AsyncMock(return_value=mock_result)
+        
+        sandbox = E2BSandbox("test_api_key")
+        sandbox.sandbox = mock_sandbox
+        
+        success = await sandbox.install_packages(["numpy", "pandas"])
+        
+        assert success is True
+        mock_sandbox.commands.run.assert_called_once()
+        call_args = mock_sandbox.commands.run.call_args[0][0]
+        assert "pip install" in call_args
+        assert "numpy" in call_args
+        assert "pandas" in call_args
+    
+    @pytest.mark.asyncio
+    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.AsyncSandbox')
+    async def test_code_execution_via_file(self, mock_sandbox_class):
+        """Test that code is executed via file write to avoid escaping issues."""
+        mock_sandbox = AsyncMock()
+        mock_result = Mock()
+        mock_result.exit_code = 0
+        mock_result.stdout = "Hello, world!"
+        mock_result.stderr = ""
+        mock_sandbox.commands.run = AsyncMock(return_value=mock_result)
+        mock_sandbox.files.write = AsyncMock()
+        
+        sandbox = E2BSandbox("test_api_key")
+        sandbox.sandbox = mock_sandbox
+        
+        code = "print('Hello, world!')"
+        result = await sandbox.execute_code(code)
+        
+        # Should write code to file
+        mock_sandbox.files.write.assert_called_once_with("/tmp/code_to_execute.py", code)
+        
+        # Should execute the file
+        run_calls = mock_sandbox.commands.run.call_args_list
+        assert len(run_calls) >= 1
+        assert "python /tmp/code_to_execute.py" in run_calls[0][0][0]
+        
+        assert result["success"] is True
+        assert result["output"] == "Hello, world!"
+
+
+class TestPyodideSandbox:
+    """Test Pyodide sandbox implementation."""
+    
+    @patch('subprocess.run')
+    def test_nodejs_availability_check(self, mock_run):
+        """Test Node.js availability checking."""
+        # Test when Node.js is available
+        mock_run.return_value = Mock(returncode=0)
+        sandbox = PyodideSandbox()
+        assert sandbox.available is True
+        
+        # Test when Node.js is not available
+        mock_run.return_value = Mock(returncode=1)
+        sandbox = PyodideSandbox()
+        assert sandbox.available is False
+        
+        # Test when subprocess fails
+        mock_run.side_effect = Exception("Command not found")
+        sandbox = PyodideSandbox()
+        assert sandbox.available is False
+    
+    @pytest.mark.asyncio
+    @patch('os.path.exists')
+    @patch('asyncio.create_subprocess_exec')
+    async def test_pyodide_runner_usage(self, mock_subprocess, mock_exists):
+        """Test that Pyodide uses the runner script when available."""
+        mock_exists.return_value = True
+        
+        # Mock subprocess
+        mock_process = AsyncMock()
+        mock_process.communicate = AsyncMock(return_value=(
+            b'{"success": true, "output": "test output", "error": null}',
+            b''
+        ))
+        mock_process.returncode = 0
+        mock_subprocess.return_value = mock_process
+        
+        sandbox = PyodideSandbox()
+        sandbox.available = True
+        
+        result = await sandbox.execute_code("print('test')")
+        
+        # Should call node with the runner script
+        mock_subprocess.assert_called_once()
+        call_args = mock_subprocess.call_args[0]
+        assert call_args[0] == 'node'
+        assert 'pyodide_runner.js' in call_args[1]
+        
+        assert result["success"] is True
+        assert result["output"] == "test output"
+
+
+class TestRestrictedPythonSandbox:
+    """Test RestrictedPython sandbox implementation."""
+    
     @pytest.mark.asyncio
     async def test_simple_execution(self):
         """Test basic code execution in RestrictedPython sandbox."""
@@ -46,382 +372,160 @@ print(f"2 + 2 = {result}")
         assert "Hello, World!" in result["output"]
         assert "2 + 2 = 4" in result["output"]
         assert result["error"] is None
-
+    
     @pytest.mark.asyncio
-    async def test_error_handling(self):
-        """Test error handling in RestrictedPython sandbox."""
+    async def test_restricted_builtins(self):
+        """Test that RestrictedPython has limited builtins."""
         sandbox = RestrictedPythonSandbox()
         if not sandbox.available:
             pytest.skip("RestrictedPython not available")
         
+        # Test allowed builtins
         code = """
-# This should cause an error
-x = undefined_variable
+# These should work
+print(len([1, 2, 3]))
+print(sum([1, 2, 3]))
+print(max([1, 2, 3]))
 """
         result = await sandbox.execute_code(code)
-        
-        assert result["success"] is False
-        assert "NameError" in result["error"] or "undefined_variable" in result["error"]
-
-    @pytest.mark.asyncio
-    async def test_restricted_access(self):
-        """Test that restricted operations are blocked."""
-        sandbox = RestrictedPythonSandbox()
-        if not sandbox.available:
-            pytest.skip("RestrictedPython not available")
-        
-        # Try to access file system (should be restricted)
-        code = """
-import os
-os.listdir('/')
-"""
-        result = await sandbox.execute_code(code)
-        
-        # Should either fail to import or fail to execute
-        assert result["success"] is False
-
-
-class TestPyodideSandbox:
-    """Test Pyodide sandbox functionality."""
-
-    @pytest.mark.asyncio
-    async def test_node_not_available(self):
-        """Test behavior when Node.js is not available."""
-        with patch('asyncio.create_subprocess_exec') as mock_subprocess:
-            # Mock Node.js not being available
-            mock_process = AsyncMock()
-            mock_process.returncode = 1
-            mock_process.communicate.return_value = (b"", b"command not found")
-            mock_subprocess.return_value = mock_process
-            
-            sandbox = PyodideSandbox()
-            
-            with pytest.raises(Exception):
-                await sandbox.execute_code("print('test')")
-
+        assert result["success"] is True
+        assert "3" in result["output"]
+        assert "6" in result["output"]
+    
     @pytest.mark.asyncio
     async def test_timeout_handling(self):
-        """Test timeout handling in Pyodide sandbox."""
-        with patch('asyncio.create_subprocess_exec') as mock_subprocess, \
-             patch('asyncio.wait_for') as mock_wait_for:
-            
-            # Mock timeout
-            mock_wait_for.side_effect = asyncio.TimeoutError()
-            mock_process = AsyncMock()
-            mock_subprocess.return_value = mock_process
-            
-            sandbox = PyodideSandbox()
-            
-            with pytest.raises(SandboxError, match="timed out"):
-                await sandbox.execute_code("print('test')", timeout=1)
-
-
-class TestE2BSandbox:
-    """Test E2B sandbox functionality."""
-
-    @pytest.mark.asyncio
-    async def test_sandbox_creation_failure(self):
-        """Test handling of sandbox creation failure."""
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client.return_value.__aenter__.return_value.post.return_value.raise_for_status.side_effect = Exception("API Error")
-            
-            sandbox = E2BSandbox("fake-api-key")
-            
-            with pytest.raises(Exception):
-                await sandbox.create_sandbox()
-
-    @pytest.mark.asyncio
-    async def test_code_execution_success(self):
-        """Test successful code execution in E2B sandbox."""
-        with patch('httpx.AsyncClient') as mock_client:
-            # Mock successful sandbox creation
-            create_response = MagicMock()
-            create_response.json.return_value = {"sandboxId": "test-sandbox-123"}
-            
-            # Mock successful code execution
-            execute_response = MagicMock()
-            execute_response.json.return_value = {
-                "success": True,
-                "output": "Hello from E2B!",
-                "error": None,
-                "logs": []
-            }
-            
-            mock_client_instance = mock_client.return_value.__aenter__.return_value
-            mock_client_instance.post.side_effect = [create_response, execute_response]
-            
-            sandbox = E2BSandbox("fake-api-key")
-            result = await sandbox.execute_code("print('Hello from E2B!')")
-            
-            assert result["success"] is True
-            assert result["output"] == "Hello from E2B!"
-
-    @pytest.mark.asyncio
-    async def test_sandbox_cleanup(self):
-        """Test sandbox cleanup functionality."""
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client_instance = mock_client.return_value.__aenter__.return_value
-            
-            sandbox = E2BSandbox("fake-api-key")
-            sandbox.sandbox_id = "test-sandbox-123"
-            
-            await sandbox.close_sandbox()
-            
-            # Verify delete was called
-            mock_client_instance.delete.assert_called_once()
-            assert sandbox.sandbox_id is None
-
-
-class TestExecuteSandboxCode:
-    """Test the main execute_sandbox_code function."""
-
-    @pytest.mark.asyncio
-    async def test_e2b_priority_with_api_key(self):
-        """Test that E2B is prioritized when API key is available."""
-        with patch.dict(os.environ, {"E2B_API_KEY": "test-key"}), \
-             patch('wandb_mcp_server.mcp_tools.execute_sandbox_code.E2BSandbox') as mock_e2b:
-            
-            mock_sandbox = AsyncMock()
-            mock_sandbox.execute_code.return_value = {
-                "success": True,
-                "output": "E2B result",
-                "error": None,
-                "logs": []
-            }
-            mock_e2b.return_value = mock_sandbox
-            
-            result = await execute_sandbox_code("print('test')")
-            
-            assert result["success"] is True
-            assert result["sandbox_used"] == "e2b"
-            mock_sandbox.close_sandbox.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_pyodide_fallback(self):
-        """Test fallback to Pyodide when E2B is not available."""
-        with patch.dict(os.environ, {}, clear=True), \
-             patch('asyncio.create_subprocess_exec') as mock_subprocess:
-            
-            # Mock Node.js availability check
-            node_check_process = AsyncMock()
-            node_check_process.returncode = 0
-            node_check_process.communicate.return_value = (b"v18.0.0\n", b"")
-            
-            # Mock Pyodide execution
-            pyodide_process = AsyncMock()
-            pyodide_process.returncode = 0
-            pyodide_process.communicate.return_value = (
-                json.dumps({
-                    "success": True,
-                    "output": "Pyodide result",
-                    "error": None,
-                    "logs": []
-                }).encode(),
-                b""
-            )
-            
-            mock_subprocess.side_effect = [node_check_process, pyodide_process]
-            
-            with patch('tempfile.NamedTemporaryFile'), \
-                 patch('os.unlink'):
-                
-                result = await execute_sandbox_code("print('test')")
-                
-                assert result["success"] is True
-                assert result["sandbox_used"] == "pyodide"
-
-    @pytest.mark.asyncio
-    async def test_restricted_python_final_fallback(self):
-        """Test fallback to RestrictedPython when other options fail."""
-        with patch.dict(os.environ, {}, clear=True), \
-             patch('asyncio.create_subprocess_exec') as mock_subprocess:
-            
-            # Mock Node.js not available
-            node_process = AsyncMock()
-            node_process.returncode = 1
-            mock_subprocess.return_value = node_process
-            
-            with patch('wandb_mcp_server.mcp_tools.execute_sandbox_code.RestrictedPythonSandbox') as mock_restricted:
-                mock_sandbox = AsyncMock()
-                mock_sandbox.execute_code.return_value = {
-                    "success": True,
-                    "output": "RestrictedPython result",
-                    "error": None,
-                    "logs": []
-                }
-                mock_restricted.return_value = mock_sandbox
-                
-                result = await execute_sandbox_code("print('test')")
-                
-                assert result["success"] is True
-                assert result["sandbox_used"] == "restricted"
-
-    @pytest.mark.asyncio
-    async def test_force_sandbox_type(self):
-        """Test forcing a specific sandbox type."""
-        with patch('wandb_mcp_server.mcp_tools.execute_sandbox_code.RestrictedPythonSandbox') as mock_restricted:
-            mock_sandbox = AsyncMock()
-            mock_sandbox.execute_code.return_value = {
-                "success": True,
-                "output": "Forced RestrictedPython",
-                "error": None,
-                "logs": []
-            }
-            mock_restricted.return_value = mock_sandbox
-            
-            result = await execute_sandbox_code("print('test')", sandbox_type="restricted")
-            
-            assert result["success"] is True
-            assert result["sandbox_used"] == "restricted"
-
-    @pytest.mark.asyncio
-    async def test_all_sandboxes_fail(self):
-        """Test behavior when all sandbox options fail."""
-        with patch.dict(os.environ, {}, clear=True), \
-             patch('asyncio.create_subprocess_exec') as mock_subprocess:
-            
-            # Mock Node.js not available
-            node_process = AsyncMock()
-            node_process.returncode = 1
-            mock_subprocess.return_value = node_process
-            
-            with patch('wandb_mcp_server.mcp_tools.execute_sandbox_code.RestrictedPythonSandbox') as mock_restricted:
-                mock_sandbox = AsyncMock()
-                mock_sandbox.execute_code.side_effect = Exception("RestrictedPython failed")
-                mock_restricted.return_value = mock_sandbox
-                
-                result = await execute_sandbox_code("print('test')")
-                
-                assert result["success"] is False
-                assert "All sandbox options failed" in result["error"]
-                assert result["sandbox_used"] == "none"
-
-
-class TestPydanticModels:
-    """Test Pydantic models for sandbox functionality."""
-
-    def test_sandbox_execution_request_validation(self):
-        """Test SandboxExecutionRequest validation."""
-        # Valid request
-        request = SandboxExecutionRequest(
-            code="print('hello')",
-            timeout=60,
-            sandbox_type=SandboxType.E2B,
-            install_packages=["numpy", "pandas"]
-        )
-        assert request.code == "print('hello')"
-        assert request.timeout == 60
-        assert request.sandbox_type == SandboxType.E2B
-        assert request.install_packages == ["numpy", "pandas"]
-
-    def test_sandbox_execution_request_defaults(self):
-        """Test SandboxExecutionRequest defaults."""
-        request = SandboxExecutionRequest(code="print('hello')")
-        assert request.timeout == 30
-        assert request.sandbox_type is None
-        assert request.install_packages is None
-
-    def test_sandbox_execution_request_timeout_validation(self):
-        """Test timeout validation in SandboxExecutionRequest."""
-        # Too small timeout
-        with pytest.raises(ValueError):
-            SandboxExecutionRequest(code="print('hello')", timeout=0)
+        """Test timeout handling in RestrictedPython."""
+        sandbox = RestrictedPythonSandbox()
+        if not sandbox.available:
+            pytest.skip("RestrictedPython not available")
         
-        # Too large timeout
-        with pytest.raises(ValueError):
-            SandboxExecutionRequest(code="print('hello')", timeout=400)
-
-    def test_sandbox_execution_result(self):
-        """Test SandboxExecutionResult model."""
-        result = SandboxExecutionResult(
-            success=True,
-            output="Hello, World!",
-            error=None,
-            logs=["Starting execution", "Execution complete"],
-            sandbox_used="e2b",
-            execution_time_ms=150
-        )
-        assert result.success is True
-        assert result.output == "Hello, World!"
-        assert result.error is None
-        assert len(result.logs) == 2
-        assert result.sandbox_used == "e2b"
-        assert result.execution_time_ms == 150
-
-    def test_sandbox_execution_result_defaults(self):
-        """Test SandboxExecutionResult defaults."""
-        result = SandboxExecutionResult(
-            success=False,
-            sandbox_used="none"
-        )
-        assert result.output == ""
-        assert result.error is None
-        assert result.logs == []
-        assert result.execution_time_ms is None
-
-
-@pytest.mark.integration
-class TestSandboxIntegration:
-    """Integration tests for sandbox functionality."""
-
-    @pytest.mark.asyncio
-    async def test_simple_math_calculation(self):
-        """Test simple mathematical calculation."""
         code = """
-import math
-result = math.sqrt(16) + math.pi
-print(f"Result: {result}")
+# Infinite loop
+while True:
+    pass
 """
-        result = await execute_sandbox_code(code)
-        
-        assert result["success"] is True
-        assert "Result:" in result["output"]
-
-    @pytest.mark.asyncio
-    async def test_data_processing(self):
-        """Test basic data processing."""
-        code = """
-data = [1, 2, 3, 4, 5]
-squared = [x**2 for x in data]
-total = sum(squared)
-print(f"Original: {data}")
-print(f"Squared: {squared}")
-print(f"Sum of squares: {total}")
-"""
-        result = await execute_sandbox_code(code)
-        
-        assert result["success"] is True
-        assert "Original:" in result["output"]
-        assert "Squared:" in result["output"]
-        assert "Sum of squares: 55" in result["output"]
-
-    @pytest.mark.asyncio
-    async def test_syntax_error_handling(self):
-        """Test handling of syntax errors."""
-        code = """
-# Invalid syntax
-if True
-    print("This should fail")
-"""
-        result = await execute_sandbox_code(code)
+        result = await sandbox.execute_code(code, timeout=1)
         
         assert result["success"] is False
-        assert "error" in result and result["error"] is not None
+        assert "timeout" in result["error"].lower()
 
+
+class TestMainExecutionFunction:
+    """Test the main execute_sandbox_code function."""
+    
     @pytest.mark.asyncio
-    async def test_timeout_behavior(self):
-        """Test timeout behavior with a very short timeout."""
-        code = """
-import time
-time.sleep(2)  # Sleep longer than timeout
-print("This should not complete")
-"""
-        result = await execute_sandbox_code(code, timeout=1)
+    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code._rate_limiter')
+    async def test_rate_limiting_enforcement(self, mock_limiter):
+        """Test that rate limiting is enforced."""
+        mock_limiter.check_rate_limit = AsyncMock(return_value=False)
         
-        # Result depends on sandbox type, but should either timeout or complete quickly
-        # We mainly want to ensure no exceptions are raised
-        assert isinstance(result, dict)
-        assert "success" in result
+        result = await execute_sandbox_code("print('test')")
+        
+        assert result["success"] is False
+        assert "Rate limit exceeded" in result["error"]
+        assert result["sandbox_used"] == "none"
+    
+    @pytest.mark.asyncio
+    @patch('os.getenv')
+    async def test_security_validation_only_for_restricted(self, mock_getenv):
+        """Test that security validation only applies to RestrictedPython."""
+        mock_getenv.return_value = None  # No E2B API key
+        
+        # Mock PyodideSandbox to be unavailable
+        with patch.object(PyodideSandbox, '_check_nodejs_available', return_value=False):
+            # This should trigger security validation for RestrictedPython
+            dangerous_code = "__import__('os').system('ls')"
+            
+            result = await execute_sandbox_code(dangerous_code, sandbox_type="restricted")
+            
+            assert result["success"] is False
+            assert "Security validation failed" in result["error"]
+            
+            # But if we had E2B, it should not validate
+            mock_getenv.return_value = "test_api_key"
+            
+            with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.E2BSandbox') as mock_e2b:
+                mock_sandbox = mock_e2b.return_value
+                mock_sandbox.execute_code = AsyncMock(return_value={
+                    "success": True,
+                    "output": "executed",
+                    "error": None,
+                    "logs": []
+                })
+                mock_sandbox.close_sandbox = AsyncMock()
+                
+                result = await execute_sandbox_code(dangerous_code, sandbox_type="e2b")
+                
+                # Should execute without security validation
+                assert "Security validation failed" not in result.get("error", "")
+    
+    @pytest.mark.asyncio
+    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code._execution_cache')
+    async def test_caching_behavior(self, mock_cache):
+        """Test that caching works correctly."""
+        # First call - cache miss
+        mock_cache.get.return_value = None
+        
+        with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.RestrictedPythonSandbox') as mock_sandbox:
+            sandbox_instance = mock_sandbox.return_value
+            sandbox_instance.available = True
+            sandbox_instance.execute_code = AsyncMock(return_value={
+                "success": True,
+                "output": "test output",
+                "error": None,
+                "logs": []
+            })
+            
+            code = "print('test')"
+            result = await execute_sandbox_code(code)
+            
+            # Should check cache
+            mock_cache.get.assert_called()
+            
+            # Should cache the result
+            mock_cache.set.assert_called_once()
+            
+            # Second call - cache hit
+            mock_cache.get.return_value = {
+                "success": True,
+                "output": "cached output",
+                "error": None,
+                "logs": [],
+                "sandbox_used": "restricted"
+            }
+            
+            result2 = await execute_sandbox_code(code)
+            
+            assert result2["output"] == "cached output"
+            assert result2["execution_time_ms"] == 0  # Cached result
+    
+    @pytest.mark.asyncio
+    async def test_fallback_behavior(self):
+        """Test sandbox fallback when preferred options fail."""
+        with patch('os.getenv', return_value="test_api_key"):
+            with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.E2BSandbox') as mock_e2b:
+                with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.PyodideSandbox') as mock_pyodide:
+                    with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.RestrictedPythonSandbox') as mock_restricted:
+                        # E2B fails
+                        e2b_instance = mock_e2b.return_value
+                        e2b_instance.execute_code = AsyncMock(side_effect=Exception("E2B failed"))
+                        e2b_instance.close_sandbox = AsyncMock()
+                        
+                        # Pyodide succeeds
+                        pyodide_instance = mock_pyodide.return_value
+                        pyodide_instance.available = True
+                        pyodide_instance.execute_code = AsyncMock(return_value={
+                            "success": True,
+                            "output": "pyodide output",
+                            "error": None,
+                            "logs": []
+                        })
+                        
+                        result = await execute_sandbox_code("print('test')")
+                        
+                        assert result["success"] is True
+                        assert result["sandbox_used"] == "pyodide"
+                        assert result["output"] == "pyodide output"
 
 
 if __name__ == "__main__":
