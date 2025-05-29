@@ -14,6 +14,8 @@ dependencies = [
     "wandb-workspaces>=0.1.12",
     "networkx>=3.4.2",
     "requests>=2.31.0",
+    "RestrictedPython>=7.0",
+    "e2b-code-interpreter>=1.5.0",
 ]
 
 [build-system]
@@ -29,6 +31,10 @@ test = [
     "litellm>=1.67.2",
     "anthropic>=0.50.0",
     "pytest-xdist>=3.6.1",
+    "pytest-asyncio>=0.26.0",
+]
+sandbox = [
+    "e2b>=0.17.0",
 ]
 
 [tool.hatch.build.targets.wheel]
