@@ -120,6 +120,18 @@ For local code execution using WebAssembly:
 1. Install Node.js (version 18 or higher): [nodejs.org](https://nodejs.org/)
 2. The Pyodide runtime will be automatically loaded when needed
 
+### Sandbox Configuration (Optional)
+
+You can configure sandbox behavior using environment variables:
+
+#### Package Installation Security
+Control which packages can be installed in E2B sandboxes:
+- `E2B_PACKAGE_ALLOWLIST`: Comma-separated list of allowed packages (e.g., `numpy,pandas,matplotlib`)
+- `E2B_PACKAGE_DENYLIST`: Comma-separated list of denied packages (default includes potentially dangerous packages)
+
+#### Cache Settings
+- `E2B_CACHE_TTL_SECONDS`: Execution cache TTL in seconds (default: 900 = 15 minutes)
+
 ## Usage tips
 
 #### Provide your W&B project and entity name
