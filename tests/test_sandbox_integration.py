@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 
 from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import (
     execute_sandbox_code,
-    E2BSandbox,
     PyodideSandbox,
 )
 
@@ -213,7 +212,6 @@ print("Result: 42")
         
         # First execution
         result1 = await execute_sandbox_code(code)
-        execution_time1 = result1.get("execution_time_ms", 0)
         
         # Second execution (should be cached)
         result2 = await execute_sandbox_code(code)

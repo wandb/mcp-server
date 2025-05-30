@@ -4,7 +4,7 @@ Tests for the MCP sandbox tool integration.
 
 import json
 import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 from dotenv import load_dotenv
 
 from tests.anthropic_test_utils import (

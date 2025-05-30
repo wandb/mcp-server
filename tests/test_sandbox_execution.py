@@ -4,25 +4,17 @@ These tests use mocking to test the sandbox logic without requiring actual sandb
 """
 
 import asyncio
-import json
-import os
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock, Mock
+from unittest.mock import patch, AsyncMock, Mock
 from dotenv import load_dotenv
 
 from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import (
     execute_sandbox_code,
     E2BSandbox,
     PyodideSandbox,
-    SandboxError,
     ExecutionCache,
     RateLimiter,
     E2BSandboxPool,
-)
-from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_models import (
-    SandboxExecutionRequest,
-    SandboxExecutionResult,
-    SandboxType,
 )
 
 load_dotenv()
@@ -346,7 +338,7 @@ class TestMainExecutionFunction:
             })
             
             code = "print('test')"
-            result = await execute_sandbox_code(code)
+            await execute_sandbox_code(code)
             
             # Should check cache
             mock_cache.get.assert_called()

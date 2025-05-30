@@ -46,7 +46,6 @@ from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_models import (
     SandboxExecutionResult,
     SandboxType,
 )
-from wandb_mcp_server.trace_utils import DateTimeEncoder
 from wandb_mcp_server.utils import get_rich_logger, get_server_args
 from wandb_mcp_server.weave_api.models import QueryResult
 
@@ -272,7 +271,7 @@ def cli():
             "WANDB_API_KEY must be set either as an environment variable, in .env file, or as a command-line argument"
         )
 
-    logger.info(f"Starting Weights & Biases MCP Server.")
+    logger.info("Starting Weights & Biases MCP Server.")
     logger.info(
         f"API Key configured: {'Yes' if get_server_args().wandb_api_key else 'No'}"
     )

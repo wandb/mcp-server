@@ -12,12 +12,10 @@ import re
 import subprocess
 import tempfile
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from collections import OrderedDict
 from datetime import datetime, timedelta
-from io import StringIO
 
-import httpx
 
 from wandb_mcp_server.utils import get_rich_logger
 
@@ -314,7 +312,7 @@ class E2BSandbox:
             # Clean up the temporary file
             try:
                 await self.sandbox.commands.run(f"rm {file_path}")
-            except:
+            except Exception:
                 pass  # Ignore cleanup errors
             
             return {
