@@ -14,7 +14,6 @@ dependencies = [
     "wandb-workspaces>=0.1.12",
     "networkx>=3.4.2",
     "requests>=2.31.0",
-    "RestrictedPython>=7.0",
     "e2b-code-interpreter>=1.5.0",
 ]
 
@@ -35,6 +34,10 @@ test = [
 ]
 sandbox = [
     "e2b>=0.17.0",
+]
+http = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
 ]
 
 [tool.hatch.build.targets.wheel]

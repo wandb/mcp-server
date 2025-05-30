@@ -7,13 +7,12 @@ class SandboxType(str, Enum):
     """Available sandbox types."""
     E2B = "e2b"
     PYODIDE = "pyodide"
-    RESTRICTED = "restricted"
 
 
 class SandboxExecutionRequest(BaseModel):
     """Request model for sandbox code execution."""
     code: str = Field(..., description="Python code to execute")
-    timeout: int = Field(default=30, description="Maximum execution time in seconds", ge=1, le=300)
+    timeout: int = Field(default=180, description="Maximum execution time in seconds", ge=1, le=300)
     sandbox_type: Optional[SandboxType] = Field(default=None, description="Force specific sandbox type")
     install_packages: Optional[List[str]] = Field(default=None, description="Packages to install (E2B only)")
 

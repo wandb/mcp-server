@@ -12,8 +12,6 @@ from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import (
     execute_sandbox_code,
     E2BSandbox,
     PyodideSandbox,
-    RestrictedPythonSandbox,
-    SecurityValidator,
 )
 
 load_dotenv()
@@ -37,7 +35,7 @@ print("Python execution successful!")
         assert result["success"] is True
         assert "4.0" in result["output"]
         assert "Python execution successful!" in result["output"]
-        assert result["sandbox_used"] in ["e2b", "pyodide", "restricted"]
+        assert result["sandbox_used"] in ["e2b", "pyodide", "none"]
         
     @pytest.mark.asyncio
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
@@ -69,7 +67,7 @@ print(df.describe())
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
     async def test_e2b_dangerous_code_allowed(self):
         """Test that E2B allows 'dangerous' operations since it's properly sandboxed."""
-        # This code would be blocked by SecurityValidator for RestrictedPython
+        # This code demonstrates E2B's secure isolation
         code = """
 import os
 import subprocess
@@ -146,7 +144,7 @@ print(f"E value: {math.e}")
             pytest.skip("Node.js not available for Pyodide testing")
         
         code = """
-# These would be blocked for RestrictedPython but are safe in Pyodide
+# These operations are safe in Pyodide's WebAssembly sandbox
 try:
     # __import__ is safe in WebAssembly sandbox
     sys = __import__('sys')
@@ -171,52 +169,6 @@ except Exception as e:
         # The code should execute without security errors
         assert "Security validation failed" not in result.get("error", "")
         
-    @pytest.mark.asyncio
-    async def test_restricted_python_sandbox(self):
-        """Test RestrictedPython sandbox with safe code."""
-        code = """
-# Safe operations for RestrictedPython
-import math
-import json
-
-data = {'x': 1, 'y': 2, 'z': 3}
-print(f"Data: {json.dumps(data)}")
-
-# Mathematical operations
-values = [1, 2, 3, 4, 5]
-print(f"Sum: {sum(values)}")
-print(f"Max: {max(values)}")
-print(f"Min: {min(values)}")
-
-# List comprehensions
-squares = [x**2 for x in values]
-print(f"Squares: {squares}")
-"""
-        
-        result = await execute_sandbox_code(code, sandbox_type="restricted")
-        
-        assert result["success"] is True
-        assert "Sum: 15" in result["output"]
-        assert result["sandbox_used"] == "restricted"
-        
-    @pytest.mark.asyncio
-    async def test_restricted_python_dangerous_code_blocked(self):
-        """Test that RestrictedPython blocks dangerous operations."""
-        dangerous_codes = [
-            "import os; print(os.environ)",
-            "__import__('subprocess').run(['ls'])",
-            "eval('2 + 2')",
-            "exec('print(1)')",
-            "open('/etc/passwd', 'r')",
-            "compile('print(1)', 'test', 'exec')",
-        ]
-        
-        for code in dangerous_codes:
-            result = await execute_sandbox_code(code, sandbox_type="restricted")
-            
-            assert result["success"] is False
-            assert "Security validation failed" in result["error"]
-            assert result["sandbox_used"] == "none"
             
     @pytest.mark.asyncio
     async def test_execution_timeout(self):

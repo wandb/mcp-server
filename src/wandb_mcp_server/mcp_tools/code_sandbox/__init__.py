@@ -9,7 +9,6 @@ from .execute_sandbox_code import (
     SandboxError,
     E2BSandbox,
     PyodideSandbox,
-    RestrictedPythonSandbox,
 )
 
 from .sandbox_models import (
@@ -30,7 +29,6 @@ __all__ = [
     # Sandbox implementations
     "E2BSandbox",
     "PyodideSandbox",
-    "RestrictedPythonSandbox",
     
     # Models
     "SandboxType",

@@ -26,21 +26,19 @@ logger = get_rich_logger(__name__)
 
 EXECUTE_SANDBOX_CODE_TOOL_DESCRIPTION = """
 Execute Python code in a secure, isolated sandbox environment. This tool provides safe code execution
-using multiple fallback options to ensure maximum compatibility and security.
+using properly sandboxed environments to ensure security.
 
 <sandbox_types>
-The tool automatically selects the best available sandbox in this order:
-1. **E2B Cloud Sandbox** - If E2B_API_KEY is available (most secure, cloud-based)
-2. **Pyodide Local Sandbox** - If Node.js is available (local, WebAssembly-based)
-3. **RestrictedPython** - Fallback option (local, restricted execution)
+The tool automatically selects the best available sandbox:
+1. **E2B Cloud Sandbox** - If E2B_API_KEY is available (most secure, cloud-based VM isolation)
+2. **Pyodide Local Sandbox** - If Node.js is available (WebAssembly-based isolation)
 
 You can force a specific sandbox type using the sandbox_type parameter.
 </sandbox_types>
 
 <security_features>
-- **E2B**: Fully isolated cloud VM with ~150ms startup time
-- **Pyodide**: WebAssembly sandbox with no filesystem access
-- **RestrictedPython**: Restricted Python execution with limited builtins
+- **E2B**: Fully isolated cloud VM with ~150ms startup time, complete system isolation
+- **Pyodide**: WebAssembly sandbox with no filesystem access, runs in isolated memory space
 </security_features>
 
 <usage_guidelines>
@@ -54,14 +52,14 @@ You can force a specific sandbox type using the sandbox_type parameter.
 <debugging_tips>
 - If E2B fails, check E2B_API_KEY environment variable
 - If Pyodide fails, ensure Node.js is installed
-- RestrictedPython has limited package support
+- If both are unavailable, the tool will return an error
 - Check the 'sandbox_used' field in results to see which sandbox was used
 </debugging_tips>
 
 Args:
     code (str): Python code to execute in the sandbox
     timeout (int, optional): Maximum execution time in seconds (default: 30)
-    sandbox_type (str, optional): Force specific sandbox ('e2b', 'pyodide', 'restricted')
+    sandbox_type (str, optional): Force specific sandbox ('e2b', 'pyodide')
     install_packages (List[str], optional): Packages to install (E2B only)
 
 Returns:
@@ -137,55 +135,6 @@ class ExecutionCache:
             self.cache.popitem(last=False)
 
 
-class SecurityValidator:
-    """Validates code for security risks before execution."""
-    
-    # Patterns that are always dangerous
-    DANGEROUS_PATTERNS = [
-        r'__import__\s*\(',
-        r'eval\s*\(',
-        r'exec\s*\(',
-        r'compile\s*\(',
-        r'globals\s*\(',
-        r'locals\s*\(',
-        r'vars\s*\(',
-        r'open\s*\(',
-        r'file\s*\(',
-        r'input\s*\(',
-        r'raw_input\s*\(',
-        r'__builtins__',
-        r'__loader__',
-        r'__file__',
-        r'__name__\s*==\s*["\']__main__["\']',
-    ]
-    
-    # Imports that might be risky
-    SUSPICIOUS_IMPORTS = [
-        'os', 'sys', 'subprocess', 'shutil', 'socket', 'requests',
-        'urllib', 'http', 'ftplib', 'telnetlib', 'smtplib'
-    ]
-    
-    @classmethod
-    def validate_code(cls, code: str) -> Tuple[bool, Optional[str]]:
-        """
-        Validate code for security risks.
-        Returns (is_safe, error_message)
-        """
-        # Check for dangerous patterns
-        for pattern in cls.DANGEROUS_PATTERNS:
-            if re.search(pattern, code, re.IGNORECASE):
-                return False, f"Dangerous pattern detected: {pattern}"
-        
-        # Warn about suspicious imports (but don't block them)
-        suspicious_found = []
-        for imp in cls.SUSPICIOUS_IMPORTS:
-            if re.search(rf'\bimport\s+{imp}\b', code) or re.search(rf'\bfrom\s+{imp}\b', code):
-                suspicious_found.append(imp)
-        
-        if suspicious_found:
-            logger.warning(f"Suspicious imports detected: {', '.join(suspicious_found)}")
-        
-        return True, None
 
 
 class E2BSandboxPool:
@@ -624,140 +573,6 @@ main();
             }
 
 
-class RestrictedPythonSandbox:
-    """RestrictedPython sandbox implementation."""
-    
-    def __init__(self):
-        try:
-            import RestrictedPython
-            self.available = True
-        except ImportError:
-            self.available = False
-    
-    async def execute_code(self, code: str, timeout: int = 30) -> Dict[str, Any]:
-        """Execute Python code in RestrictedPython sandbox."""
-        if not self.available:
-            raise SandboxError("RestrictedPython is not available")
-        
-        from RestrictedPython import compile_restricted_exec, safe_globals
-        from RestrictedPython.PrintCollector import PrintCollector
-        
-        try:
-            # Compile the restricted code
-            compiled = compile_restricted_exec(code)
-            
-            # Check for compilation errors
-            if compiled.errors:
-                return {
-                    "success": False,
-                    "output": "",
-                    "error": f"Compilation errors: {'; '.join(compiled.errors)}",
-                    "logs": list(compiled.errors),
-                }
-            
-            # Create a PrintCollector for output
-            _print = PrintCollector()
-            
-            # Prepare the restricted environment
-            restricted_globals = {
-                '__builtins__': safe_globals,
-                '_print_': PrintCollector,  # This allows print statements to work
-                '_getattr_': getattr,       # Required for attribute access
-                '__name__': '__main__',
-                '__doc__': None,
-                '__package__': None,
-                '_getiter_': iter,          # Required for iteration
-                '_getitem_': lambda obj, index: obj[index],  # Required for indexing
-            }
-            
-            # Add safe modules and functions
-            import math
-            import random
-            import datetime
-            import json as json_module
-            
-            # Add specific safe functions to builtins
-            safe_builtins = restricted_globals['__builtins__'].copy()
-            safe_builtins.update({
-                'len': len,
-                'range': range,
-                'sum': sum,
-                'max': max,
-                'min': min,
-                'abs': abs,
-                'round': round,
-                'sorted': sorted,
-                'enumerate': enumerate,
-                'zip': zip,
-                'map': map,
-                'filter': filter,
-                'str': str,
-                'int': int,
-                'float': float,
-                'bool': bool,
-                'list': list,
-                'dict': dict,
-                'set': set,
-                'tuple': tuple,
-                'type': type,
-                '__import__': __import__,  # Allow imports (RestrictedPython controls what can be imported)
-            })
-            restricted_globals['__builtins__'] = safe_builtins
-            
-            # Add safe modules to globals
-            restricted_globals.update({
-                'math': math,
-                'random': random,
-                'datetime': datetime,
-                'json': json_module,
-            })
-            
-            # Execute with timeout using asyncio
-            def execute():
-                exec(compiled.code, restricted_globals)
-            
-            try:
-                await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(None, execute),
-                    timeout=timeout
-                )
-            except asyncio.TimeoutError:
-                # Get any output that was collected
-                output = ''
-                if 'printed' in restricted_globals:
-                    output = restricted_globals['printed']
-                
-                return {
-                    "success": False,
-                    "output": output,
-                    "error": f"Execution timed out after {timeout} seconds",
-                    "logs": [output] if output else [],
-                }
-            
-            # Get the printed output
-            output = ''
-            if 'printed' in restricted_globals:
-                output = restricted_globals['printed']
-            
-            return {
-                "success": True,
-                "output": output,
-                "error": None,
-                "logs": [output] if output else [],
-            }
-            
-        except Exception as e:
-            # Try to get any partial output
-            output = ''
-            if 'restricted_globals' in locals() and 'printed' in restricted_globals:
-                output = restricted_globals['printed']
-            
-            return {
-                "success": False,
-                "output": output,
-                "error": f"RestrictedPython execution failed: {str(e)}",
-                "logs": [],
-            }
 
 
 # Global cache instance
@@ -813,18 +628,6 @@ async def execute_sandbox_code(
             "sandbox_used": "none",
         }
     
-    # Only validate code security for RestrictedPython
-    # E2B and Pyodide are properly sandboxed, so users can run any code safely
-    if sandbox_type == "restricted" or (not sandbox_type and not os.getenv("E2B_API_KEY") and not PyodideSandbox().available):
-        is_safe, security_error = SecurityValidator.validate_code(code)
-        if not is_safe:
-            return {
-                "success": False,
-                "output": "",
-                "error": f"Security validation failed for RestrictedPython: {security_error}",
-                "logs": [],
-                "sandbox_used": "none",
-            }
     
     # Determine which sandbox to use
     sandboxes_to_try = []
@@ -838,14 +641,10 @@ async def execute_sandbox_code(
             pyodide = PyodideSandbox()
             if pyodide.available:
                 sandboxes_to_try.append(("pyodide", pyodide))
-        elif sandbox_type == "restricted":
-            restricted = RestrictedPythonSandbox()
-            if restricted.available:
-                sandboxes_to_try.append(("restricted", restricted))
     else:
         # Auto-select based on availability
         # Check cache first
-        for sb_type in ["e2b", "pyodide", "restricted"]:
+        for sb_type in ["e2b", "pyodide"]:
             cached_result = _execution_cache.get(code, sb_type, install_packages)
             if cached_result:
                 # Add execution time to cached result
@@ -861,10 +660,17 @@ async def execute_sandbox_code(
         if pyodide.available:
             sandboxes_to_try.append(("pyodide", pyodide))
         
-        # Finally fall back to RestrictedPython
-        restricted = RestrictedPythonSandbox()
-        if restricted.available:
-            sandboxes_to_try.append(("restricted", restricted))
+    
+    # Check if we have any sandboxes available
+    if not sandboxes_to_try:
+        return {
+            "success": False,
+            "output": "",
+            "error": "No sandboxes available. Please set E2B_API_KEY environment variable or install Node.js for Pyodide.",
+            "logs": [],
+            "sandbox_used": "none",
+            "execution_time_ms": int((time.time() - start_time) * 1000),
+        }
     
     # Try each sandbox in order
     last_error = None
@@ -877,9 +683,9 @@ async def execute_sandbox_code(
                 result = await sandbox.execute_code(code, timeout, install_packages)
                 await sandbox.close_sandbox()
             else:
-                # Pyodide and RestrictedPython don't support package installation
-                if install_packages and sandbox_name != "e2b":
-                    logger.warning(f"{sandbox_name} sandbox doesn't support package installation")
+                # Pyodide doesn't support package installation
+                if install_packages and sandbox_name == "pyodide":
+                    logger.warning("Pyodide sandbox doesn't support package installation")
                 result = await sandbox.execute_code(code, timeout)
             
             # Add sandbox info and execution time

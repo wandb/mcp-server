@@ -30,7 +30,7 @@ class TestSandboxMCPTool:
             {
                 "code": {"type": "string", "description": "Python code to execute"},
                 "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 30},
-                "sandbox_type": {"type": "string", "description": "Sandbox type", "enum": ["e2b", "pyodide", "restricted"]},
+                "sandbox_type": {"type": "string", "description": "Sandbox type", "enum": ["e2b", "pyodide"]},
                 "install_packages": {"type": "array", "items": {"type": "string"}, "description": "Packages to install"}
             }
         )
@@ -161,7 +161,7 @@ class TestSandboxAnthropicIntegration:
             {
                 "code": {"type": "string", "description": "Python code to execute"},
                 "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 30},
-                "sandbox_type": {"type": "string", "description": "Sandbox type", "enum": ["e2b", "pyodide", "restricted"]},
+                "sandbox_type": {"type": "string", "description": "Sandbox type", "enum": ["e2b", "pyodide"]},
                 "install_packages": {"type": "array", "items": {"type": "string"}, "description": "Packages to install"}
             }
         )
