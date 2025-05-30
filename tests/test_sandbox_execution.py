@@ -15,6 +15,7 @@ from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import (
     ExecutionCache,
     RateLimiter,
     E2BSandboxPool,
+    SandboxError,
 )
 
 load_dotenv()
@@ -121,7 +122,7 @@ class TestE2BSandboxPool:
     """Test E2B sandbox pooling."""
     
     @pytest.mark.asyncio
-    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.AsyncSandbox')
+    @patch('e2b_code_interpreter.AsyncSandbox')
     async def test_pool_initialization(self, mock_sandbox_class):
         """Test pool initialization."""
         # Mock sandbox creation
@@ -136,7 +137,7 @@ class TestE2BSandboxPool:
         assert len(pool.all_sandboxes) == 2
     
     @pytest.mark.asyncio
-    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.AsyncSandbox')
+    @patch('e2b_code_interpreter.AsyncSandbox')
     async def test_pool_acquire_release(self, mock_sandbox_class):
         """Test acquiring and releasing sandboxes from pool."""
         mock_sandbox1 = AsyncMock()
@@ -154,7 +155,7 @@ class TestE2BSandboxPool:
         assert sb2 == mock_sandbox2
         
         # Pool should be empty now
-        with pytest.raises(asyncio.TimeoutError):
+        with pytest.raises(SandboxError):
             await pool.acquire(timeout=0.1)
         
         # Release one back
@@ -188,7 +189,7 @@ class TestE2BSandbox:
         assert sandbox._acquired_from_pool is True
     
     @pytest.mark.asyncio
-    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.AsyncSandbox')
+    @patch('e2b_code_interpreter.AsyncSandbox')
     async def test_package_installation(self, mock_sandbox_class):
         """Test package installation in E2B."""
         mock_sandbox = AsyncMock()
@@ -210,7 +211,7 @@ class TestE2BSandbox:
         assert "pandas" in call_args
     
     @pytest.mark.asyncio
-    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.AsyncSandbox')
+    @patch('e2b_code_interpreter.AsyncSandbox')
     async def test_code_execution_via_file(self, mock_sandbox_class):
         """Test that code is executed via file write to avoid escaping issues."""
         mock_sandbox = AsyncMock()
@@ -327,38 +328,42 @@ class TestMainExecutionFunction:
         # First call - cache miss
         mock_cache.get.return_value = None
         
-        with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.PyodideSandbox') as mock_sandbox:
-            sandbox_instance = mock_sandbox.return_value
-            sandbox_instance.available = True
-            sandbox_instance.execute_code = AsyncMock(return_value={
-                "success": True,
-                "output": "test output",
-                "error": None,
-                "logs": []
-            })
-            
-            code = "print('test')"
-            await execute_sandbox_code(code)
-            
-            # Should check cache
-            mock_cache.get.assert_called()
-            
-            # Should cache the result
-            mock_cache.set.assert_called_once()
-            
-            # Second call - cache hit
-            mock_cache.get.return_value = {
-                "success": True,
-                "output": "cached output",
-                "error": None,
-                "logs": [],
-                "sandbox_used": "pyodide"
-            }
-            
-            result2 = await execute_sandbox_code(code)
-            
-            assert result2["output"] == "cached output"
-            assert result2["execution_time_ms"] == 0  # Cached result
+        with patch.dict('os.environ', {'E2B_API_KEY': ''}, clear=False):
+            with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.PyodideSandbox') as mock_sandbox:
+                sandbox_instance = mock_sandbox.return_value
+                sandbox_instance.available = True
+                sandbox_instance.execute_code = AsyncMock(return_value={
+                    "success": True,
+                    "output": "test output",
+                    "error": None,
+                    "logs": []
+                })
+                
+                code = "print('test')"
+                result = await execute_sandbox_code(code)
+                
+                # Should check cache
+                mock_cache.get.assert_called()
+                
+                # Verify result has sandbox_used added
+                assert result["sandbox_used"] == "pyodide"
+                
+                # Should cache the result
+                mock_cache.set.assert_called_once()
+                
+                # Second call - cache hit
+                mock_cache.get.return_value = {
+                    "success": True,
+                    "output": "cached output",
+                    "error": None,
+                    "logs": [],
+                    "sandbox_used": "pyodide"
+                }
+                
+                result2 = await execute_sandbox_code(code)
+                
+                assert result2["output"] == "cached output"
+                assert result2["execution_time_ms"] == 0  # Cached result
     
     @pytest.mark.asyncio
     async def test_fallback_behavior(self):

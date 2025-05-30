@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Pyodide runner for W&B MCP Server sandbox execution",
   "main": "pyodide_runner.js",
-  "type": "module",
   "scripts": {
     "test": "node pyodide_runner.js \"cHJpbnQoJ0hlbGxvIGZyb20gUHlvZGlkZSEnKQ==\""
   },

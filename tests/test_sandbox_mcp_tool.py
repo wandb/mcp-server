@@ -14,7 +14,7 @@ from tests.anthropic_test_utils import (
     get_anthropic_tool_result_message,
 )
 from wandb_mcp_server.mcp_tools.tools_utils import generate_anthropic_tool_schema
-from wandb_mcp_server.tool_prompts import EXECUTE_SANDBOX_CODE_TOOL_DESCRIPTION
+from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import EXECUTE_SANDBOX_CODE_TOOL_DESCRIPTION
 
 load_dotenv()
 

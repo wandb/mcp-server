@@ -21,6 +21,49 @@ from wandb_mcp_server.utils import get_rich_logger
 
 logger = get_rich_logger(__name__)
 
+# Configuration constants
+DEFAULT_CACHE_SIZE = 100
+DEFAULT_CACHE_TTL_SECONDS = 900  # 15 minutes
+DEFAULT_RATE_LIMIT_REQUESTS = 100
+DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
+DEFAULT_POOL_SIZE = 5
+DEFAULT_TIMEOUT_SECONDS = 30
+MAX_TIMEOUT_SECONDS = 300
+E2B_STARTUP_TIMEOUT_SECONDS = 60
+
+# Get cache TTL from environment or use default
+CACHE_TTL_SECONDS = int(os.getenv("E2B_CACHE_TTL_SECONDS", str(DEFAULT_CACHE_TTL_SECONDS)))
+
+# Package installation security configuration
+# Can be overridden via E2B_PACKAGE_ALLOWLIST and E2B_PACKAGE_DENYLIST env vars
+DEFAULT_PACKAGE_ALLOWLIST = None  # None means allow all (unless denied)
+DEFAULT_PACKAGE_DENYLIST = [
+    # Packages that could be used maliciously
+    "subprocess32",  # Subprocess with additional features
+    "psutil",  # System and process utilities
+    "pyautogui",  # GUI automation
+    "pynput",  # Input control
+]
+
+
+def get_package_filters():
+    """Get package allowlist and denylist from environment or defaults."""
+    # Get allowlist
+    allowlist_env = os.getenv("E2B_PACKAGE_ALLOWLIST")
+    if allowlist_env:
+        allowlist = [pkg.strip() for pkg in allowlist_env.split(",") if pkg.strip()]
+    else:
+        allowlist = DEFAULT_PACKAGE_ALLOWLIST
+    
+    # Get denylist
+    denylist_env = os.getenv("E2B_PACKAGE_DENYLIST")
+    if denylist_env:
+        denylist = [pkg.strip() for pkg in denylist_env.split(",") if pkg.strip()]
+    else:
+        denylist = DEFAULT_PACKAGE_DENYLIST
+    
+    return allowlist, denylist
+
 
 EXECUTE_SANDBOX_CODE_TOOL_DESCRIPTION = """
 Execute Python code in a secure, isolated sandbox environment. This tool provides safe code execution
@@ -96,7 +139,7 @@ class SandboxError(Exception):
 class ExecutionCache:
     """Simple LRU cache for code execution results."""
     
-    def __init__(self, max_size: int = 100, ttl_seconds: int = 900):  # 15 minutes TTL
+    def __init__(self, max_size: int = DEFAULT_CACHE_SIZE, ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS):
         self.cache = OrderedDict()
         self.max_size = max_size
         self.ttl_seconds = ttl_seconds
@@ -138,7 +181,7 @@ class ExecutionCache:
 class E2BSandboxPool:
     """Connection pool for E2B sandboxes."""
     
-    def __init__(self, api_key: str, pool_size: int = 3):
+    def __init__(self, api_key: str, pool_size: int = DEFAULT_POOL_SIZE):
         self.api_key = api_key
         self.pool_size = pool_size
         self.available = asyncio.Queue(maxsize=pool_size)
@@ -176,7 +219,7 @@ class E2BSandboxPool:
         sandbox = await AsyncSandbox.create()
         return sandbox
     
-    async def acquire(self, timeout: float = 30.0):
+    async def acquire(self, timeout: float = DEFAULT_TIMEOUT_SECONDS):
         """Acquire a sandbox from the pool."""
         if not self._initialized:
             await self.initialize()
@@ -246,21 +289,47 @@ class E2BSandbox:
             return True
         
         try:
-            # Sanitize package names
-            safe_packages = [pkg.strip() for pkg in packages if re.match(r'^[a-zA-Z0-9\-_.]+$', pkg.strip())]
-            if len(safe_packages) != len(packages):
-                logger.warning("Some package names were filtered for safety")
+            # Get package filters
+            allowlist, denylist = get_package_filters()
             
-            if not safe_packages:
-                return True
+            # Sanitize and filter package names
+            filtered_packages = []
+            denied_packages = []
+            
+            for pkg in packages:
+                pkg = pkg.strip()
+                # First check format safety
+                if not re.match(r'^[a-zA-Z0-9\-_.]+$', pkg):
+                    logger.warning(f"Package '{pkg}' filtered due to invalid characters")
+                    continue
+                
+                # Check against denylist
+                if denylist and pkg.lower() in [d.lower() for d in denylist]:
+                    denied_packages.append(pkg)
+                    continue
+                
+                # Check against allowlist (if specified)
+                if allowlist and pkg.lower() not in [a.lower() for a in allowlist]:
+                    denied_packages.append(pkg)
+                    continue
+                
+                filtered_packages.append(pkg)
+            
+            if denied_packages:
+                logger.warning(f"Denied packages: {', '.join(denied_packages)}")
+            
+            if not filtered_packages:
+                if denied_packages:
+                    return False  # All packages were denied
+                return True  # No packages to install
             
             # Install packages
-            package_str = " ".join(safe_packages)
+            package_str = " ".join(filtered_packages)
             logger.info(f"Installing packages: {package_str}")
             
             result = await self.sandbox.commands.run(
                 f"pip install --no-cache-dir {package_str}",
-                timeout=60  # Give more time for package installation
+                timeout=E2B_STARTUP_TIMEOUT_SECONDS
             )
             
             success = result.exit_code == 0
@@ -273,7 +342,7 @@ class E2BSandbox:
             logger.error(f"Failed to install packages: {e}")
             return False
     
-    async def execute_code(self, code: str, timeout: int = 30, install_packages_list: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def execute_code(self, code: str, timeout: int = DEFAULT_TIMEOUT_SECONDS, install_packages_list: Optional[List[str]] = None) -> Dict[str, Any]:
         """Execute Python code in the E2B sandbox."""
         if not self.sandbox:
             await self.create_sandbox()
@@ -368,7 +437,7 @@ class PyodideSandbox:
         except Exception:
             return False
     
-    async def execute_code(self, code: str, timeout: int = 30) -> Dict[str, Any]:
+    async def execute_code(self, code: str, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Dict[str, Any]:
         """Execute Python code using Pyodide in Node.js."""
         if not self.available:
             raise SandboxError("Node.js is not available for Pyodide execution")
@@ -574,13 +643,13 @@ main();
 
 
 # Global cache instance
-_execution_cache = ExecutionCache()
+_execution_cache = ExecutionCache(ttl_seconds=CACHE_TTL_SECONDS)
 
 # Rate limiting
 class RateLimiter:
     """Simple rate limiter for sandbox executions."""
     
-    def __init__(self, max_requests: int = 100, window_seconds: int = 60):
+    def __init__(self, max_requests: int = DEFAULT_RATE_LIMIT_REQUESTS, window_seconds: int = DEFAULT_RATE_LIMIT_WINDOW_SECONDS):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.requests = []
@@ -605,7 +674,7 @@ _rate_limiter = RateLimiter()
 
 async def execute_sandbox_code(
     code: str,
-    timeout: int = 30,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
     sandbox_type: Optional[str] = None,
     install_packages: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
@@ -626,6 +695,15 @@ async def execute_sandbox_code(
             "sandbox_used": "none",
         }
     
+    # Validate timeout
+    if timeout > MAX_TIMEOUT_SECONDS:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Timeout cannot exceed {MAX_TIMEOUT_SECONDS} seconds",
+            "logs": [],
+            "sandbox_used": "none",
+        }
     
     # Determine which sandbox to use
     sandboxes_to_try = []
