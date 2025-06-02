@@ -21,6 +21,59 @@ from wandb_mcp_server.utils import get_rich_logger
 
 logger = get_rich_logger(__name__)
 
+
+def check_sandbox_availability() -> tuple[bool, List[str], str]:
+    """
+    Check if any sandbox is available for code execution.
+    
+    Returns:
+        tuple containing:
+            - is_available (bool): Whether any sandbox is available
+            - available_types (List[str]): List of available sandbox types ('e2b', 'pyodide')
+            - reason (str): Explanation of availability status
+    """
+    # Check if sandbox is disabled
+    if os.getenv("DISABLE_CODE_SANDBOX"):
+        return (False, [], "Code sandbox is disabled via DISABLE_CODE_SANDBOX environment variable")
+    
+    available_types = []
+    reasons = []
+    
+    # Check E2B availability
+    if os.getenv("E2B_API_KEY"):
+        available_types.append("e2b")
+        reasons.append("E2B cloud sandbox available (API key found)")
+    else:
+        reasons.append("E2B not available (E2B_API_KEY not set)")
+    
+    # Check Pyodide/Deno availability
+    try:
+        result = subprocess.run(
+            ["deno", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            available_types.append("pyodide")
+            reasons.append("Pyodide sandbox available (Deno found)")
+        else:
+            reasons.append("Pyodide not available (Deno command failed)")
+    except Exception as e:
+        reasons.append(f"Pyodide not available (Deno not found: {str(e)})")
+    
+    # Determine overall availability
+    is_available = len(available_types) > 0
+    
+    # Construct reason message
+    if is_available:
+        reason = f"Sandbox available. {' '.join(reasons)}"
+    else:
+        reason = f"No sandboxes available. {' '.join(reasons)}"
+    
+    return (is_available, available_types, reason)
+
+
 # Configuration constants
 DEFAULT_CACHE_SIZE = 100
 DEFAULT_CACHE_TTL_SECONDS = 900  # 15 minutes
