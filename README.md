@@ -97,20 +97,20 @@ uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library
 
 ### Writing environment variables to the config file
 
-The `add_to_client` function accepts a number of flags to enable setting environment variables needed. Below is an example of using the built-in convenience flag, `e2b_api_key`, as well as setting other env variables that don't have dedicated flags.
+The `add_to_client` function accepts a number of flags to enable writing optional environment variables to the server's config file. Below is an example of using the built-in convenience flag, `--e2b_api_key`, as well as setting other env variables that don't have dedicated flags.
 
-```
+```bash
 # Write the server config file with additional env vars
-uvx --from git+https://github.com/wandb/wandb-mcp-server \
-  add_to_client ~/.codeium/windsurf/mcp_config.json \
-  --e2b_api_key 12345abcde
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
+  --config_path ~/.codeium/windsurf/mcp_config.json \
+  --e2b_api_key 12345abcde \
   --set_env_vars MCP_LOGS_WANDB_ENTITY=my_wandb_entity E2B_PACKAGE_ALLOWLIST=numpy,pandas
 
 # Then login to W&B
 uvx wandb login
 ```
 
-Arguments passed to `set_env_vars` must be space separated and the key and value of each env variable must be separated only by a `=`.
+Arguments passed to `--set_env_vars` must be space separated and the key and value of each env variable must be separated only by a `=`.
 
 ## Manual Installation
 1. Ensure you have `uv` installed, see above installation instructions for uv.
@@ -143,6 +143,10 @@ Run the server from source by running the below in the root dir:
 ```bash
 wandb login && uv run src/wandb_mcp_server/server.py
 ```
+
+## Environment Variables
+
+The full list of environment variables used to control the server's settings can be found in the `.env.example` file.
 
 
 ## Available MCP tools
