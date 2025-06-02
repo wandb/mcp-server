@@ -10,51 +10,98 @@
 
 A Model Context Protocol (MCP) server for querying [Weights & Biases](https://www.wandb.ai/) data. This server allows a MCP Client to:
 
-- query W&B Models runs, sweeps, artifacts and registry
+- query W&B Models runs and sweeps
 - query W&B Weave traces, evaluations and datasets
+- query [wandbot](https://github.com/wandb/wandbot), the W&B support agent, for general W&B feature questions
+- run python code in isolated E2B or Pyodide sandboxes for data analysis
 - write text and charts to W&B Reports
-- query [wandbot](https://github.com/wandb/wandbot), the W&B support bot, for general W&B feature questions
+
 
 ## Installation
-We provide a helper utility for easily installing the Weights & Biases MCP Server into applications that use a JSON server spec. Please first [install `uv`](https://docs.astral.sh/uv/getting-started/installation/), typically by running `curl -LsSf https://astral.sh/uv/install.sh | sh` on your machine or running `brew install uv` on your mac.
 
-From there, the `add_to_client` helper will add or update the required mcp json for popular MCP clients below - inspired by the OpenMCP Server Registry [`add-to-client` pattern](https://www.open-mcp.org/servers)
+### Install `uv`
 
-### Cursor
+Please first [install `uv`](https://docs.astral.sh/uv/getting-started/installation/) with either:
 
-#### Cursor project (run from the project dir):
-```
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client .cursor/mcp.json && uvx wandb login
-```
 
-#### Cursor global (applies to all projects):
-```
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.cursor/mcp.json && uvx wandb login
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### Windsurf
+or 
 
-```
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.codeium/windsurf/mcp_config.json && uvx wandb login
-```
-
-### Claude Desktop:
-First ensure `uv` is installed, you might have to use brew to install depite `uv` being available in your terminal:
-
-```
+```bash
 brew install uv
 ```
 
-then:
+### Code sandbox setup
 
+The wandb MCP server exposes a secure, isolated python code sandbox tool to the client to enable data analysis to be run on queried data. 
+
+**Option 1: Local Pyodide sandbox setup**
+
+The local Pyodide sandbox uses Deno to isolate execution from the host system. Just install Deno to enable this option:
+
+```bash
+# One-line install for macOS/Linux:
+curl -fsSL https://deno.land/install.sh | sh
+
+# Or on Windows (PowerShell):
+irm https://deno.land/install.ps1 | iex
 ```
+
+Deno will automatically download the Pyodide runtime when first used.
+
+**Option 2: Hosted E2B sandbox setup**
+
+The sandbox tool will default to E2B is an E2B api key is detected. To use the hosted [E2B](https;//www.e2b.dev) sandbox:
+
+1. Sign up to E2B at [e2b.dev](https://e2b.dev)
+2. Set the `E2B_API_KEY` environment variable
+
+
+If neither Deno nor an E2B api key are detected then the `execute_sandbox_code_tool` tool will not be added to the wandb MCP server.
+
+
+### Installation helpers
+
+We provide a helper utility below to easily install the Weights & Biases MCP Server into applications that use a JSON server spec - inspired by the OpenMCP Server Registry [add-to-client pattern](https://www.open-mcp.org/servers).
+
+
+### Cursor installation
+#### Specific Cursor project
+Enabel the MCP for a specific project. Run the following in the root of your project dir:
+
+```bash
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client .cursor/mcp.json && uvx wandb login
+```
+
+#### Cursor global
+Enable the MCP for all Curosor projects, doesn't matter where this is run:
+
+```bash
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.cursor/mcp.json && uvx wandb login
+```
+
+### Windsurf installation
+
+```bash
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.codeium/windsurf/mcp_config.json && uvx wandb login
+```
+
+### Claude Desktop installation
+First ensure `uv` is installed, you might have to use brew to install depite `uv` being available in your terminal.
+
+```bash
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library/Application\ Support/Claude/claude_desktop_config.json && uvx wandb login
 ```
 
-### Manual Installation
-If you don't want to use the helper above, add the following to your MCP client config manually:
+## Manual Installation
+1. Ensure you have `uv` installed, see above installation instructions for uv.
+2. Get your W&B api key [here](https://www.wandb.ai/authorize)
+3. Add the following to your MCP client config manually.
 
-```
+```bash
 {
   "mcpServers": {
     "wandb": {
@@ -64,6 +111,9 @@ If you don't want to use the helper above, add the following to your MCP client 
         "git+https://github.com/wandb/wandb-mcp-server",
         "wandb_mcp_server"
       ]
+      "envs": {
+        "WANDB_API_KEY": <insert your wandb key>
+      }
     }
   }
 }
@@ -71,28 +121,30 @@ If you don't want to use the helper above, add the following to your MCP client 
 
 ### Runing from Source
 
-Run the server from source using:
+Run the server from source by running the below in the root dir:
 
 ```bash
 wandb login && uv run src/wandb_mcp_server/server.py
 ```
 
 
-## Available W&B tools
+## Available MCP tools
 
 ### wandb
--  **`query_wandb_gql_tool`** Execute an arbitrary GraphQL query against wandb experiment tracking data including Projects, Runs, Artifacts, Sweeps, Reports, etc.
+-  **`query_wandb_tool`** Execute queries against wandb experiment tracking data including Runs & Sweeps.
   
-### Weave
+### weave
 - **`query_weave_traces_tool`** Queries Weave traces with powerful filtering, sorting, and pagination options.
   Returns either complete trace data or just metadata to avoid overwhelming the LLM context window.
 
 - **`count_weave_traces_tool`** Efficiently counts Weave traces matching given filters without returning the trace data.
   Returns both total trace count and root traces count to understand project scope before querying.
 
+### W&B Support agent
+- **`query_wandb_support_bot`** Connect your client to [wandbot](https://github.com/wandb/wandbot), our RAG-powered support agent for general help on how to use Weigths & Biases products and features.
 
-### W&B Support bot
-- **`query_wandb_support_bot`** Ask [wandbot](https://github.com/wandb/wandbot), our RAG-powered support agent for general help on how to use Weigths & Biases products and features. Powered by the W&B documentation.
+### Python code sandbox
+- **`execute_sandbox_code_tool`** Execute Python code in secure, isolated sandbox environments, either a hosted E2B sandbox or a local Pyodide sandbox, WebAssembly-based execution that uses Deno to isolate execution from the host system (inspired by [Pydantic AI's Run Python MCP](https://ai.pydantic.dev/mcp/run-python/)). See sandbox setup instructions above.
 
 ### Saving Analysis
 - **`create_wandb_report_tool`** Creates a new W&B Report with markdown text and HTML-rendered visualizations.
@@ -101,26 +153,7 @@ wandb login && uv run src/wandb_mcp_server/server.py
 ### General W&B helpers
 - **`query_wandb_entity_projects`** List the available W&B entities and projects that can be accessed to give the LLM more context on how to write the correct queries for the above tools.
 
-### Code Execution & Sandbox
-- **`execute_sandbox_code_tool`** Execute Python code in secure, isolated sandbox environments:
-  - **E2B Cloud Sandbox** - Most secure option with full VM isolation (requires `E2B_API_KEY`)
-  - **Pyodide Local Sandbox** - WebAssembly-based execution (requires Node.js)
-
-
-## Sandbox Requirements
-
-### E2B Cloud Sandbox (Recommended)
-For the most secure sandbox experience, set up an E2B API key:
-1. Sign up at [e2b.dev](https://e2b.dev)
-2. Get your API key from the dashboard
-3. Set the environment variable: `export E2B_API_KEY=your_api_key_here`
-
-### Local Pyodide Sandbox
-For local code execution using WebAssembly:
-1. Install Node.js (version 18 or higher): [nodejs.org](https://nodejs.org/)
-2. The Pyodide runtime will be automatically loaded when needed
-
-### Sandbox Configuration (Optional)
+## Sandbox Configuration (Optional)
 
 You can configure sandbox behavior using environment variables:
 
