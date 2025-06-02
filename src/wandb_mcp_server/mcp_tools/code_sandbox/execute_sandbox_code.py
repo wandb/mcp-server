@@ -72,14 +72,17 @@ using properly sandboxed environments to ensure security.
 <sandbox_types>
 The tool automatically selects the best available sandbox:
 1. **E2B Cloud Sandbox** - If E2B_API_KEY is available (most secure, cloud-based VM isolation)
-2. **Pyodide Local Sandbox** - If Node.js is available (WebAssembly-based isolation)
+2. **Pyodide Local Sandbox** - If Deno is available (WebAssembly-based isolation with Deno security)
 
 You can force a specific sandbox type using the sandbox_type parameter.
 </sandbox_types>
 
 <security_features>
 - **E2B**: Fully isolated cloud VM with ~150ms startup time, complete system isolation
-- **Pyodide**: WebAssembly sandbox with no filesystem access, runs in isolated memory space
+- **Pyodide**: WebAssembly sandbox using Deno's permission model for enhanced security:
+  - Explicit network permission only for package downloads
+  - No filesystem access (except node_modules)
+  - Process-level isolation with Deno's security sandbox
 </security_features>
 
 <usage_guidelines>
@@ -92,7 +95,7 @@ You can force a specific sandbox type using the sandbox_type parameter.
 
 <debugging_tips>
 - If E2B fails, check E2B_API_KEY environment variable
-- If Pyodide fails, ensure Node.js is installed
+- If Pyodide fails, ensure Deno is installed
 - If both are unavailable, the tool will return an error
 - Check the 'sandbox_used' field in results to see which sandbox was used
 </debugging_tips>
@@ -419,16 +422,16 @@ class E2BSandbox:
 
 
 class PyodideSandbox:
-    """Local Pyodide sandbox implementation using Node.js."""
+    """Local Pyodide sandbox implementation using Deno for enhanced security."""
     
     def __init__(self):
-        self.available = self._check_nodejs_available()
+        self.available = self._check_deno_available()
     
-    def _check_nodejs_available(self) -> bool:
-        """Check if Node.js is available."""
+    def _check_deno_available(self) -> bool:
+        """Check if Deno is available."""
         try:
             result = subprocess.run(
-                ["node", "--version"],
+                ["deno", "--version"],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -438,29 +441,44 @@ class PyodideSandbox:
             return False
     
     async def execute_code(self, code: str, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Dict[str, Any]:
-        """Execute Python code using Pyodide in Node.js."""
+        """Execute Python code using Pydantic's Deno-based Pyodide MCP server."""
         if not self.available:
-            raise SandboxError("Node.js is not available for Pyodide execution")
+            raise SandboxError("Deno is not available for Pyodide execution")
         
         try:
-            # Encode the Python code as base64 to avoid shell escaping issues
-            encoded_code = base64.b64encode(code.encode('utf-8')).decode('ascii')
+            # Create an MCP request for Pydantic's run-python server
+            mcp_request = {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "run_python_code",
+                    "arguments": {
+                        "code": code
+                    }
+                },
+                "id": 1
+            }
             
-            # Get the path to our pyodide runner script
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            pyodide_runner_path = os.path.join(script_dir, 'pyodide_runner.js')
-            
-            # If the runner script doesn't exist, fall back to inline execution
-            if not os.path.exists(pyodide_runner_path):
-                logger.warning("Pyodide runner script not found, using inline execution")
-                return await self._execute_inline(code, timeout)
-            
-            # Execute the pyodide runner script
+            # Run Pydantic's MCP server with Deno
+            # Using stdin/stdout for communication
             process = await asyncio.create_subprocess_exec(
-                'node', pyodide_runner_path, encoded_code,
+                'deno', 'run',
+                '-N',  # Network access for package downloads
+                '-R=node_modules',  # Read access to node_modules
+                '-W=node_modules',  # Write access to node_modules
+                '--node-modules-dir=auto',
+                'jsr:@pydantic/mcp-run-python',
+                'stdio',  # Use stdio mode for direct communication
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
+            
+            # Send the MCP request
+            request_str = json.dumps(mcp_request) + '\n'
+            process.stdin.write(request_str.encode())
+            await process.stdin.drain()
+            process.stdin.close()
             
             try:
                 stdout, stderr = await asyncio.wait_for(
@@ -477,167 +495,81 @@ class PyodideSandbox:
                     "logs": [],
                 }
             
-            # Parse the JSON output
+            # Parse the MCP response
             try:
-                result = json.loads(stdout.decode('utf-8'))
-                # Ensure all required fields are present
-                return {
-                    "success": result.get("success", False),
-                    "output": result.get("output", ""),
-                    "error": result.get("error"),
-                    "logs": [result.get("output", "")] if result.get("output") else [],
-                }
-            except json.JSONDecodeError:
-                # If we can't parse JSON, treat the output as an error
-                error_msg = stderr.decode('utf-8', errors='replace') or stdout.decode('utf-8', errors='replace')
+                # The response might have multiple lines, get the last valid JSON
+                lines = stdout.decode('utf-8').strip().split('\n')
+                response = None
+                for line in reversed(lines):
+                    if line.strip():
+                        try:
+                            response = json.loads(line)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+                
+                if not response:
+                    raise ValueError("No valid JSON response found")
+                
+                # Extract the result from MCP response
+                if "result" in response and "content" in response["result"]:
+                    content = response["result"]["content"]
+                    # Handle different content formats
+                    if isinstance(content, list) and content:
+                        # Extract text from content blocks
+                        output_parts = []
+                        error_parts = []
+                        for item in content:
+                            if isinstance(item, dict) and "text" in item:
+                                text = item["text"]
+                                if "error" in text.lower() or "traceback" in text.lower():
+                                    error_parts.append(text)
+                                else:
+                                    output_parts.append(text)
+                        
+                        output = "\n".join(output_parts)
+                        error = "\n".join(error_parts) if error_parts else None
+                        success = not bool(error_parts)
+                    else:
+                        # Fallback for simple string content
+                        output = str(content)
+                        error = None
+                        success = True
+                    
+                    return {
+                        "success": success,
+                        "output": output,
+                        "error": error,
+                        "logs": [output] if output else [],
+                    }
+                elif "error" in response:
+                    return {
+                        "success": False,
+                        "output": "",
+                        "error": response["error"].get("message", "Unknown error"),
+                        "logs": [],
+                    }
+                else:
+                    raise ValueError("Unexpected response format")
+                    
+            except (json.JSONDecodeError, ValueError) as e:
+                # If we can't parse the response, check stderr for errors
+                error_msg = stderr.decode('utf-8', errors='replace') if stderr else str(e)
                 return {
                     "success": False,
                     "output": "",
-                    "error": f"Failed to parse Pyodide output: {error_msg}",
-                    "logs": [error_msg],
+                    "error": f"Failed to parse MCP response: {error_msg}",
+                    "logs": [stdout.decode('utf-8', errors='replace')] if stdout else [],
                 }
             
         except Exception as e:
             return {
                 "success": False,
                 "output": "",
-                "error": f"Pyodide execution failed: {str(e)}",
+                "error": f"Deno Pyodide execution failed: {str(e)}",
                 "logs": [],
             }
     
-    async def _execute_inline(self, code: str, timeout: int) -> Dict[str, Any]:
-        """Fallback inline execution when pyodide_runner.js is not available."""
-        # Encode the code to avoid escaping issues
-        encoded_code = base64.b64encode(code.encode('utf-8')).decode('ascii')
-        
-        # Create an inline Node.js script that runs Pyodide
-        node_script = f'''
-const {{ loadPyodide }} = await import('https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.mjs');
-
-async function main() {{
-    const startTime = Date.now();
-    try {{
-        const pyodide = await loadPyodide({{
-            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/"
-        }});
-        
-        // Pre-load packages
-        try {{
-            await pyodide.loadPackage(["numpy", "pandas", "matplotlib"]);
-        }} catch (e) {{
-            // Continue even if some packages fail
-        }}
-        
-        // Decode the base64 encoded code
-        const encodedCode = "{encoded_code}";
-        const codeBuffer = Uint8Array.from(atob(encodedCode), c => c.charCodeAt(0));
-        const code = new TextDecoder().decode(codeBuffer);
-        
-        // Set up Python environment
-        pyodide.runPython(`
-import sys
-from io import StringIO
-import traceback
-
-_stdout_capture = StringIO()
-_original_stdout = sys.stdout
-sys.stdout = _stdout_capture
-
-_result = {{'success': False, 'output': '', 'error': None}}
-
-# Store the code in a variable to avoid escaping issues
-_code_to_exec = globals().get('_code_to_exec', '')
-
-try:
-    exec(_code_to_exec)
-    _result['output'] = _stdout_capture.getvalue()
-    _result['success'] = True
-except Exception as e:
-    _result['error'] = traceback.format_exc()
-    _result['output'] = _stdout_capture.getvalue()
-finally:
-    sys.stdout = _original_stdout
-`);
-        
-        // Pass the code to Python
-        pyodide.globals.set('_code_to_exec', code);
-        
-        // Re-run to execute with the code
-        pyodide.runPython('exec(_code_to_exec, {{}})');
-        
-        const result = pyodide.globals.get('_result').toJs();
-        console.log(JSON.stringify({{
-            success: result.get('success'),
-            output: result.get('output') || '',
-            error: result.get('error'),
-            execution_time_ms: Date.now() - startTime
-        }}));
-        
-    }} catch (error) {{
-        console.log(JSON.stringify({{
-            success: false,
-            output: '',
-            error: `Pyodide error: ${{error.message}}`,
-            execution_time_ms: Date.now() - startTime
-        }}));
-        process.exit(1);
-    }}
-}}
-
-main();
-'''
-        
-        try:
-            # Write the Node.js script to a temporary file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.mjs', delete=False) as f:
-                f.write(node_script)
-                temp_file = f.name
-            
-            # Execute the Node.js script with experimental modules
-            process = await asyncio.create_subprocess_exec(
-                'node', '--experimental-modules', temp_file,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=timeout
-                )
-            except asyncio.TimeoutError:
-                process.kill()
-                await process.communicate()
-                raise SandboxError(f"Execution timed out after {timeout} seconds")
-            finally:
-                # Clean up
-                os.unlink(temp_file)
-            
-            # Parse the JSON output
-            try:
-                result = json.loads(stdout.decode('utf-8').strip().split('\n')[-1])
-                return {
-                    "success": result.get("success", False),
-                    "output": result.get("output", ""),
-                    "error": result.get("error"),
-                    "logs": [result.get("output", "")] if result.get("output") else [],
-                }
-            except (json.JSONDecodeError, IndexError):
-                error_msg = stderr.decode('utf-8', errors='replace')
-                return {
-                    "success": False,
-                    "output": "",
-                    "error": f"Failed to execute: {error_msg}",
-                    "logs": [stdout.decode('utf-8', errors='replace'), error_msg],
-                }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "output": "",
-                "error": f"Inline Pyodide execution failed: {str(e)}",
-                "logs": [],
-            }
 
 
 
@@ -742,7 +674,7 @@ async def execute_sandbox_code(
         return {
             "success": False,
             "output": "",
-            "error": "No sandboxes available. Please set E2B_API_KEY environment variable or install Node.js for Pyodide.",
+            "error": "No sandboxes available. Please set E2B_API_KEY environment variable or install Deno for Pyodide.",
             "logs": [],
             "sandbox_used": "none",
             "execution_time_ms": int((time.time() - start_time) * 1000),
