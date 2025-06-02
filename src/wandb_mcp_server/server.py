@@ -142,7 +142,7 @@ async def count_weave_traces_tool(
 
 
 @mcp.tool(description=QUERY_WANDB_GQL_TOOL_DESCRIPTION)
-def query_wandb_gql_tool(
+def query_wandb_tool(
     query: str,
     variables: Dict[str, Any] = None,
     max_items: int = 100,

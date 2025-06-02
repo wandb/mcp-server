@@ -26,7 +26,7 @@ model registry, reports, artifacts, sweeps.
 W&B offers two distinct products with different purposes:
 
 1. W&B Models: A system for ML experiment tracking, hyperparameter optimization, and model 
-    lifecycle management. Use `query_wandb_gql_tool` for questions about:
+    lifecycle management. Use `query_wandb_tool` for questions about:
     - Experiment runs, metrics, and performance comparisons
     - Artifact management and model registry
     - Hyperparameter optimization and sweeps
@@ -42,7 +42,7 @@ W&B offers two distinct products with different purposes:
 
 <use_case_selector>
 **USE CASE SELECTOR - READ FIRST:**
-- For runs, metrics, experiments, artifacts, sweeps etc → use query_wandb_gql_tool (this tool)
+- For runs, metrics, experiments, artifacts, sweeps etc → use query_wandb_tool (this tool)
 - For traces, LLM calls, chain-of-thought, LLM evaluations, AI agent traces, AI apps etc → use query_weave_traces_tool
 
 =====================================================================
@@ -52,7 +52,7 @@ This tool is ONLY for WANDB MODELS DATA (MLOps), NOT for LLM TRACES or GENAI APP
 
 **KEYWORD GUIDE:**
 If user question contains:
-- "runs", "experiments", "metrics" → Use query_wandb_gql_tool (this tool)
+- "runs", "experiments", "metrics" → Use query_wandb_tool (this tool)
 - "traces", "LLM calls" etc → Use query_weave_traces_tool
 
 **COMMON MISUSE CASES:**
@@ -207,7 +207,7 @@ query LimitedRuns($entity: String!, $project: String!) {
 Some tactics to consider to avoid exceeding the context window of the LLM when using this tool:
     - First return just metadata about the wandb project or run you will be returning.
     - Select only a subset of the data such as just particular columns or rows.
-    - If you need to return a large amount of data consider using the `query_wandb_gql_tool` in a loop
+    - If you need to return a large amount of data consider using the `query_wandb_tool` in a loop
     - Break up the query into smaller chunks.
 
 If you are returning just a sample subset of the data warn the user that this is a sample and that they should
