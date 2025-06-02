@@ -36,11 +36,11 @@ brew install uv
 
 ### Code sandbox setup
 
-The wandb MCP server exposes a secure, isolated python code sandbox tool to the client to enable data analysis to be run on queried data. 
+The wandb MCP server exposes a secure, isolated python code sandbox tool to the client to let it send code (e.g. pandas) for additional data analysis to be run on queried W&B data. 
 
-**Option 1: Local Pyodide sandbox setup**
+**Option 1: Local Pyodide sandbox - Install Deno**
 
-The local Pyodide sandbox uses Deno to isolate execution from the host system. Just install Deno to enable this option:
+The local Pyodide sandbox uses Deno to isolate execution from the host system. This will be used if an E2B api is not found, just install Deno to enable this option:
 
 ```bash
 # One-line install for macOS/Linux:
@@ -52,15 +52,14 @@ irm https://deno.land/install.ps1 | iex
 
 Deno will automatically download the Pyodide runtime when first used.
 
-**Option 2: Hosted E2B sandbox setup**
+**Option 2: Hosted E2B sandbox - Set E2B api key**
 
 The sandbox tool will default to E2B is an E2B api key is detected. To use the hosted [E2B](https;//www.e2b.dev) sandbox:
 
 1. Sign up to E2B at [e2b.dev](https://e2b.dev)
 2. Set the `E2B_API_KEY` environment variable
 
-
-If neither Deno nor an E2B api key are detected then the `execute_sandbox_code_tool` tool will not be added to the wandb MCP server.
+If neither Deno nor an E2B api key are detected then the `execute_sandbox_code_tool` tool will not be added to the wandb MCP server. To explicitly disable the sandbox tool then explicitly set the `DISABLE_CODE_SANDBOX=1` environment variable.
 
 
 ### Installation helpers
@@ -157,6 +156,9 @@ wandb login && uv run src/wandb_mcp_server/server.py
 
 You can configure sandbox behavior using environment variables:
 
+#### Disable Sandbox
+- `DISABLE_CODE_SANDBOX`: Set to any value to completely disable the code sandbox tool (e.g., `DISABLE_CODE_SANDBOX=1`)
+
 #### Package Installation Security
 Control which packages can be installed in E2B sandboxes:
 - `E2B_PACKAGE_ALLOWLIST`: Comma-separated list of allowed packages (e.g., `numpy,pandas,matplotlib`)
@@ -186,6 +188,14 @@ When asking broad, general questions such as "what are my best performing runs/e
 
 
 ## Troubleshooting
+
+### Authentication
+
+Ensure the machine running the MCP server is authenticated  to Weights & Biases, either by setting the `WANDB_API_KEY` or running the below to add the key to the .netrc file:
+
+```bash
+uvx wandb login
+```
 
 ### Error: spawn uv ENOENT
 
