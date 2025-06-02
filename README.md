@@ -19,7 +19,7 @@ A Model Context Protocol (MCP) server for querying [Weights & Biases](https://ww
 
 ## Installation
 
-### Install `uv`
+### 1. Install `uv`
 
 Please first [install `uv`](https://docs.astral.sh/uv/getting-started/installation/) with either:
 
@@ -34,7 +34,7 @@ or
 brew install uv
 ```
 
-### Code sandbox setup
+### 2. Code sandbox setup (optional)
 
 The wandb MCP server exposes a secure, isolated python code sandbox tool to the client to let it send code (e.g. pandas) for additional data analysis to be run on queried W&B data. 
 
@@ -62,21 +62,21 @@ The sandbox tool will default to E2B is an E2B api key is detected. To use the h
 If neither Deno nor an E2B api key are detected then the `execute_sandbox_code_tool` tool will not be added to the wandb MCP server. To explicitly disable the sandbox tool then explicitly set the `DISABLE_CODE_SANDBOX=1` environment variable.
 
 
-### Installation helpers
+### 3. Installation helpers
 
 We provide a helper utility below to easily install the Weights & Biases MCP Server into applications that use a JSON server spec - inspired by the OpenMCP Server Registry [add-to-client pattern](https://www.open-mcp.org/servers).
 
 
 ### Cursor installation
 #### Specific Cursor project
-Enabel the MCP for a specific project. Run the following in the root of your project dir:
+Enable the server for a specific project. Run the following in the root of your project dir:
 
 ```bash
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client .cursor/mcp.json && uvx wandb login
 ```
 
 #### Cursor global
-Enable the MCP for all Curosor projects, doesn't matter where this is run:
+Enable the server for all Cursor projects, doesn't matter where this is run:
 
 ```bash
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.cursor/mcp.json && uvx wandb login
@@ -95,12 +95,29 @@ First ensure `uv` is installed, you might have to use brew to install depite `uv
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library/Application\ Support/Claude/claude_desktop_config.json && uvx wandb login
 ```
 
+### Writing environment variables to the config file
+
+The `add_to_client` function accepts a number of flags to enable setting environment variables needed. Below is an example of using the built-in convenience flag, `e2b_api_key`, as well as setting other env variables that don't have dedicated flags.
+
+```
+# Write the server config file with additional env vars
+uvx --from git+https://github.com/wandb/wandb-mcp-server \
+  add_to_client ~/.codeium/windsurf/mcp_config.json \
+  --e2b_api_key 12345abcde
+  --set_env_vars MCP_LOGS_WANDB_ENTITY=my_wandb_entity E2B_PACKAGE_ALLOWLIST=numpy,pandas
+
+# Then login to W&B
+uvx wandb login
+```
+
+Arguments passed to `set_env_vars` must be space separated and the key and value of each env variable must be separated only by a `=`.
+
 ## Manual Installation
 1. Ensure you have `uv` installed, see above installation instructions for uv.
 2. Get your W&B api key [here](https://www.wandb.ai/authorize)
 3. Add the following to your MCP client config manually.
 
-```bash
+```json
 {
   "mcpServers": {
     "wandb": {
@@ -109,9 +126,10 @@ uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library
         "--from",
         "git+https://github.com/wandb/wandb-mcp-server",
         "wandb_mcp_server"
-      ]
-      "envs": {
-        "WANDB_API_KEY": <insert your wandb key>
+      ],
+      "env": {
+        "WANDB_API_KEY": "<insert your wandb key>",
+        "E2B_API_KEY": "<optional: insert your E2B key>"
       }
     }
   }
