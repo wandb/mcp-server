@@ -119,16 +119,16 @@ def get_package_filters():
 
 
 EXECUTE_SANDBOX_CODE_TOOL_DESCRIPTION = """
-Execute Python code in a secure, isolated sandbox environment. This tool provides safe code execution
-using properly sandboxed environments to ensure security.
+Execute Python code in a secure, isolated code sandbox environment for data analysis on queried \
+Weights & Biases data. The sandbox comes with pandas and numpy pre-installed. If there is a need for data \
+transforms to help answer the users' question then python code can be passed to this tool.
 
-<sandbox_types>
-The tool automatically selects the best available sandbox:
-1. **E2B Cloud Sandbox** - If E2B_API_KEY is available (most secure, cloud-based VM isolation)
-2. **Pyodide Local Sandbox** - If Deno is available (WebAssembly-based isolation with Deno security)
-
-You can force a specific sandbox type using the sandbox_type parameter.
-</sandbox_types>
+<usage_guidelines>
+- Perfect for data analysis, visualization, and computational tasks
+- Supports common packages like numpy, pandas, matplotlib
+- Ideal for exploratory data analysis and quick computations
+- Can be used to process W&B data safely
+</usage_guidelines>
 
 <security_features>
 - **E2B**: Fully isolated cloud VM with ~150ms startup time, complete system isolation
@@ -138,34 +138,29 @@ You can force a specific sandbox type using the sandbox_type parameter.
   - Process-level isolation with Deno's security sandbox
 </security_features>
 
-<usage_guidelines>
-- Perfect for data analysis, visualization, and computational tasks
-- Supports common packages like numpy, pandas, matplotlib (depending on sandbox)
-- Use for user-provided code that needs isolation from the host system
-- Ideal for exploratory data analysis and quick computations
-- Can be used to process W&B data safely
-</usage_guidelines>
+Args
+-------
+code : str
+    Python code to execute in the sandbox.
+timeout : int, optional
+    Maximum execution time in seconds (default: 30).
+install_packages : list of str, optional
+    Additional packages to install for analysis on top of numpy and pandas.
 
-<debugging_tips>
-- If E2B fails, check E2B_API_KEY environment variable
-- If Pyodide fails, ensure Deno is installed
-- If both are unavailable, the tool will return an error
-- Check the 'sandbox_used' field in results to see which sandbox was used
-</debugging_tips>
-
-Args:
-    code (str): Python code to execute in the sandbox
-    timeout (int, optional): Maximum execution time in seconds (default: 30)
-    sandbox_type (str, optional): Force specific sandbox ('e2b', 'pyodide')
-    install_packages (List[str], optional): Packages to install (E2B only)
-
-Returns:
-    Dict containing:
-        - success (bool): Whether execution succeeded
-        - output (str): Standard output from code execution
-        - error (str): Error message if execution failed
-        - logs (List[str]): Execution logs
-        - sandbox_used (str): Type of sandbox that was used
+Returns
+-------
+dict
+    Dictionary with the following keys:
+    success : bool
+        Whether execution succeeded.
+    output : str
+        Standard output from code execution.
+    error : str
+        Error message if execution failed.
+    logs : list of str
+        Execution logs.
+    sandbox_used : str
+        Type of sandbox that was used.
 
 Example:
     ```python
@@ -384,7 +379,7 @@ class E2BSandbox:
             logger.info(f"Installing packages: {package_str}")
             
             result = await self.sandbox.commands.run(
-                f"pip install --no-cache-dir {package_str}",
+                f"uv pip install --no-cache-dir {package_str}",
                 timeout=E2B_STARTUP_TIMEOUT_SECONDS
             )
             
@@ -696,8 +691,9 @@ async def execute_sandbox_code(
     if sandbox_type:
         # User specified a sandbox type
         if sandbox_type == "e2b":
-            if os.getenv("E2B_API_KEY"):
-                sandboxes_to_try.append(("e2b", E2BSandbox(os.getenv("E2B_API_KEY"))))
+            api_key = os.getenv("E2B_API_KEY")
+            if api_key is not None:
+                sandboxes_to_try.append(("e2b", E2BSandbox(api_key)))
         elif sandbox_type == "pyodide":
             pyodide = PyodideSandbox()
             if pyodide.available:
@@ -713,8 +709,9 @@ async def execute_sandbox_code(
                 return cached_result
         
         # Try E2B first if available
-        if os.getenv("E2B_API_KEY"):
-            sandboxes_to_try.append(("e2b", E2BSandbox(os.getenv("E2B_API_KEY"))))
+        api_key = os.getenv("E2B_API_KEY")
+        if api_key is not None:
+            sandboxes_to_try.append(("e2b", E2BSandbox(api_key)))
         
         # Then try Pyodide
         pyodide = PyodideSandbox()
