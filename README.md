@@ -104,13 +104,13 @@ The `add_to_client` function accepts a number of flags to enable writing optiona
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
   --config_path ~/.codeium/windsurf/mcp_config.json \
   --e2b_api_key 12345abcde \
-  --set_env_vars MCP_LOGS_WANDB_ENTITY=my_wandb_entity E2B_PACKAGE_ALLOWLIST=numpy,pandas
+  --write_env_vars MCP_LOGS_WANDB_ENTITY=my_wandb_entity E2B_PACKAGE_ALLOWLIST=numpy,pandas
 
 # Then login to W&B
 uvx wandb login
 ```
 
-Arguments passed to `--set_env_vars` must be space separated and the key and value of each env variable must be separated only by a `=`.
+Arguments passed to `--write_env_vars` must be space separated and the key and value of each env variable must be separated only by a `=`.
 
 ## Manual Installation
 1. Ensure you have `uv` installed, see above installation instructions for uv.
