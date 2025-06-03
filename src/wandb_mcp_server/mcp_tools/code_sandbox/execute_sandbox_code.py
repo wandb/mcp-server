@@ -4,6 +4,7 @@ Supports both E2B cloud sandboxes and local Pyodide execution.
 """
 
 import asyncio
+import asyncio.subprocess
 import base64
 import hashlib
 import json
@@ -80,7 +81,6 @@ DEFAULT_CACHE_SIZE = 100
 DEFAULT_CACHE_TTL_SECONDS = 900  # 15 minutes
 DEFAULT_RATE_LIMIT_REQUESTS = 100
 DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
-DEFAULT_POOL_SIZE = 5
 DEFAULT_TIMEOUT_SECONDS = 30
 MAX_TIMEOUT_SECONDS = 300
 E2B_STARTUP_TIMEOUT_SECONDS = 60
@@ -230,110 +230,51 @@ class ExecutionCache:
 
 
 
-class E2BSandboxPool:
-    """Connection pool for E2B sandboxes."""
-    
-    def __init__(self, api_key: str, pool_size: int = DEFAULT_POOL_SIZE):
-        self.api_key = api_key
-        self.pool_size = pool_size
-        self.available = asyncio.Queue(maxsize=pool_size)
-        self.all_sandboxes = []
-        self._initialized = False
-        self._lock = asyncio.Lock()
-    
-    async def initialize(self):
-        """Initialize the sandbox pool."""
-        async with self._lock:
-            if self._initialized:
-                return
-            
-            logger.info(f"Initializing E2B sandbox pool with {self.pool_size} sandboxes")
-            
-            # Pre-create sandboxes
-            tasks = [self._create_sandbox() for _ in range(self.pool_size)]
-            sandboxes = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            for i, result in enumerate(sandboxes):
-                if isinstance(result, Exception):
-                    logger.error(f"Failed to create sandbox {i}: {result}")
-                else:
-                    self.all_sandboxes.append(result)
-                    await self.available.put(result)
-            
-            self._initialized = True
-            logger.info(f"E2B sandbox pool initialized with {len(self.all_sandboxes)} sandboxes")
-    
-    async def _create_sandbox(self):
-        """Create a single E2B sandbox."""
-        from e2b_code_interpreter import AsyncSandbox
-        
-        os.environ["E2B_API_KEY"] = self.api_key
-        sandbox = await AsyncSandbox.create()
-        return sandbox
-    
-    async def acquire(self, timeout: float = DEFAULT_TIMEOUT_SECONDS):
-        """Acquire a sandbox from the pool."""
-        if not self._initialized:
-            await self.initialize()
-        
-        try:
-            sandbox = await asyncio.wait_for(self.available.get(), timeout=timeout)
-            return sandbox
-        except asyncio.TimeoutError:
-            raise SandboxError("Timeout waiting for available sandbox")
-    
-    async def release(self, sandbox):
-        """Release a sandbox back to the pool."""
-        if sandbox in self.all_sandboxes:
-            await self.available.put(sandbox)
-    
-    async def cleanup(self):
-        """Clean up all sandboxes in the pool."""
-        for sandbox in self.all_sandboxes:
-            try:
-                await sandbox.close()
-            except Exception as e:
-                logger.error(f"Error closing sandbox: {e}")
-        
-        self.all_sandboxes.clear()
-        self._initialized = False
+# Removed E2BSandboxPool - we'll use a single persistent sandbox instead
 
 
 class E2BSandbox:
-    """E2B cloud sandbox implementation using official SDK with pooling."""
+    """E2B cloud sandbox implementation with a single persistent instance."""
     
-    _pool: Optional[E2BSandboxPool] = None
-    _pool_lock = asyncio.Lock()
+    # Class-level persistent sandbox instance
+    _shared_sandbox = None
+    _sandbox_lock = asyncio.Lock()
+    _api_key = None
     
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.sandbox = None
-        self._acquired_from_pool = False
+        self.sandbox = None  # Initialize the sandbox attribute
+        E2BSandbox._api_key = api_key
     
     @classmethod
-    async def get_pool(cls, api_key: str) -> E2BSandboxPool:
-        """Get or create the shared sandbox pool."""
-        async with cls._pool_lock:
-            if cls._pool is None:
-                cls._pool = E2BSandboxPool(api_key)
-                await cls._pool.initialize()
-            return cls._pool
+    async def get_or_create_sandbox(cls):
+        """Get the shared sandbox instance, creating it if necessary."""
+        async with cls._sandbox_lock:
+            if cls._shared_sandbox is None:
+                if not cls._api_key:
+                    raise ValueError("E2B API key not set")
+                logger.info("Creating new E2B sandbox instance")
+                from e2b_code_interpreter import AsyncSandbox
+                
+                os.environ["E2B_API_KEY"] = cls._api_key
+                
+                # Get timeout from environment or use E2B default (5 minutes)
+                # E2B expects timeout in seconds, not milliseconds
+                timeout_seconds = int(os.getenv("E2B_SANDBOX_TIMEOUT_SECONDS", "900"))  # 15 minutes default
+                logger.info(f"Creating E2B sandbox with timeout: {timeout_seconds}s ({timeout_seconds/60:.1f} minutes)")
+                
+                cls._shared_sandbox = await AsyncSandbox.create(timeout=timeout_seconds)
+                logger.info("E2B sandbox instance created successfully")
+            return cls._shared_sandbox
     
     async def create_sandbox(self):
-        """Acquire a sandbox from the pool or create a new one."""
+        """Get reference to the shared sandbox instance."""
         try:
-            pool = await self.get_pool(self.api_key)
-            self.sandbox = await pool.acquire(timeout=5.0)
-            self._acquired_from_pool = True
-            logger.debug("Acquired sandbox from pool")
+            self.sandbox = await self.get_or_create_sandbox()
+            logger.debug("Using shared E2B sandbox instance")
         except Exception as e:
-            logger.warning(f"Failed to acquire from pool, creating new sandbox: {e}")
-            # Fallback to creating a new sandbox
-            from e2b_code_interpreter import AsyncSandbox
-            
-            os.environ["E2B_API_KEY"] = self.api_key
-            self.sandbox = await AsyncSandbox.create()
-            self._acquired_from_pool = False
+            logger.error(f"Failed to create/get E2B sandbox: {e}", exc_info=True)
+            raise
     
     async def install_packages(self, packages: List[str]) -> bool:
         """Install packages in the sandbox."""
@@ -396,8 +337,11 @@ class E2BSandbox:
     
     async def execute_code(self, code: str, timeout: int = DEFAULT_TIMEOUT_SECONDS, install_packages_list: Optional[List[str]] = None) -> Dict[str, Any]:
         """Execute Python code in the E2B sandbox."""
-        if not self.sandbox:
+        logger.debug(f"execute_code called, self.sandbox is: {self.sandbox}")
+        if not hasattr(self, 'sandbox') or self.sandbox is None:
+            logger.debug("self.sandbox not set, calling create_sandbox()")
             await self.create_sandbox()
+            logger.debug(f"After create_sandbox, self.sandbox is: {self.sandbox}")
         
         # Install packages if requested
         if install_packages_list:
@@ -453,21 +397,10 @@ class E2BSandbox:
             }
     
     async def close_sandbox(self):
-        """Release or close the E2B sandbox."""
-        if self.sandbox:
-            try:
-                if self._acquired_from_pool:
-                    pool = await self.get_pool(self.api_key)
-                    await pool.release(self.sandbox)
-                    logger.debug("Released sandbox back to pool")
-                else:
-                    await self.sandbox.close()
-                    logger.debug("Closed standalone sandbox")
-            except Exception as e:
-                logger.warning(f"Error during sandbox cleanup: {e}")
-            finally:
-                self.sandbox = None
-                self._acquired_from_pool = False
+        """Release the reference to the sandbox (but keep it running)."""
+        # Don't actually close the shared sandbox - just release our reference
+        self.sandbox = None
+        logger.debug("Released reference to shared E2B sandbox")
     
     async def writeFile(self, path: str, content: str) -> None:
         """Write a file to the E2B sandbox using native file operations."""
@@ -479,16 +412,32 @@ class E2BSandbox:
             logger.debug(f"Wrote file to E2B sandbox: {path}")
         except Exception as e:
             raise SandboxError(f"Failed to write file to E2B sandbox: {e}")
+    
+    @classmethod
+    async def cleanup_shared_sandbox(cls):
+        """Explicitly close the shared sandbox instance (for cleanup)."""
+        async with cls._sandbox_lock:
+            if cls._shared_sandbox is not None:
+                try:
+                    await cls._shared_sandbox.close()
+                    logger.info("Closed shared E2B sandbox instance")
+                except Exception as e:
+                    logger.error(f"Error closing shared E2B sandbox: {e}")
+                finally:
+                    cls._shared_sandbox = None
 
 
 class PyodideSandbox:
     """Local Pyodide sandbox implementation using Deno for enhanced security."""
     
+    # Class-level persistent process
+    _shared_process = None
+    _process_lock = asyncio.Lock()
+    _initialized = False
+    
     def __init__(self):
         self.available = self._check_deno_available()
         self._pyodide_script_path = Path(__file__).parent / "pyodide_sandbox.ts"
-        self._process = None
-        self._initialized = False
     
     def _check_deno_available(self) -> bool:
         """Check if Deno is available."""
@@ -503,8 +452,58 @@ class PyodideSandbox:
         except Exception:
             return False
     
+    @classmethod
+    async def get_or_create_process(cls, script_path: Path):
+        """Get or create the shared Pyodide process."""
+        async with cls._process_lock:
+            if cls._shared_process is None or cls._shared_process.returncode is not None:
+                logger.info("Starting persistent Pyodide sandbox process")
+                cls._shared_process = await asyncio.create_subprocess_exec(
+                    'deno', 'run',
+                    '--allow-net',  # For downloading Pyodide and packages
+                    '--allow-read',  # To read local files
+                    '--allow-write',  # To write output files and cache
+                    '--allow-env',  # For environment variables
+                    str(script_path),
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                cls._initialized = True
+                
+                # Read initialization messages
+                try:
+                    # Wait for "ready" message with timeout
+                    ready_task = asyncio.create_task(cls._read_until_ready())
+                    await asyncio.wait_for(ready_task, timeout=60)
+                    logger.info("Pyodide sandbox process initialized")
+                except asyncio.TimeoutError:
+                    logger.error("Timeout waiting for Pyodide to initialize")
+                    if cls._shared_process:
+                        cls._shared_process.kill()
+                        await cls._shared_process.wait()
+                    cls._shared_process = None
+                    raise SandboxError("Failed to initialize Pyodide sandbox")
+                    
+            return cls._shared_process
+    
+    @classmethod
+    async def _read_until_ready(cls):
+        """Read stderr until we see the ready message."""
+        if not cls._shared_process:
+            return
+            
+        while True:
+            line = await cls._shared_process.stderr.readline()
+            if not line:
+                break
+            line_str = line.decode('utf-8').strip()
+            logger.debug(f"Pyodide init: {line_str}")
+            if "Pyodide sandbox server ready" in line_str:
+                break
+    
     async def execute_code(self, code: str, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Dict[str, Any]:
-        """Execute Python code using our direct Pyodide implementation."""
+        """Execute Python code using our persistent Pyodide process."""
         if not self.available:
             raise SandboxError("Deno is not available for Pyodide execution")
         
@@ -512,38 +511,29 @@ class PyodideSandbox:
             raise SandboxError(f"Pyodide script not found at {self._pyodide_script_path}")
         
         try:
+            # Get or create the persistent process
+            process = await self.get_or_create_process(self._pyodide_script_path)
+            
             # Create execution request
             request = {
+                "type": "execute",
                 "code": code,
                 "timeout": timeout
             }
             
-            # Run our Pyodide sandbox with Deno
-            process = await asyncio.create_subprocess_exec(
-                'deno', 'run',
-                '--allow-net=cdn.jsdelivr.net,pyodide-cdn2.iodide.org',  # For downloading Pyodide
-                '--allow-read',  # To read local files
-                '--allow-write=.',  # To write output files
-                str(self._pyodide_script_path),
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            # Send the request
-            request_json = json.dumps(request)
+            # Send request as a single line JSON
+            request_json = json.dumps(request) + '\n'
             process.stdin.write(request_json.encode())
             await process.stdin.drain()
-            process.stdin.close()
             
+            # Read response with timeout
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
+                response_line = await asyncio.wait_for(
+                    process.stdout.readline(),
                     timeout=timeout + 5  # Give extra time for process overhead
                 )
             except asyncio.TimeoutError:
-                process.kill()
-                await process.communicate()
+                # Don't kill the process on timeout, just return error
                 return {
                     "success": False,
                     "output": "",
@@ -553,29 +543,22 @@ class PyodideSandbox:
             
             # Parse the response
             try:
-                if stdout:
-                    # The stdout should contain our JSON response
-                    result = json.loads(stdout.decode('utf-8'))
+                if response_line:
+                    result = json.loads(response_line.decode('utf-8'))
                     return result
                 else:
-                    # If no stdout, check stderr for errors
-                    error_msg = stderr.decode('utf-8', errors='replace') if stderr else "No output from Pyodide"
                     return {
                         "success": False,
                         "output": "",
-                        "error": error_msg,
+                        "error": "No response from Pyodide process",
                         "logs": [],
                     }
                     
             except json.JSONDecodeError as e:
-                # If we can't parse the response, return error info
-                error_msg = f"Failed to parse response: {e}"
-                if stderr:
-                    error_msg += f"\nStderr: {stderr.decode('utf-8', errors='replace')}"
                 return {
                     "success": False,
-                    "output": stdout.decode('utf-8', errors='replace') if stdout else "",
-                    "error": error_msg,
+                    "output": "",
+                    "error": f"Failed to parse response: {e}",
                     "logs": [],
                 }
             
@@ -587,22 +570,63 @@ class PyodideSandbox:
                 "logs": [],
             }
     
+    @classmethod
+    async def cleanup_shared_process(cls):
+        """Explicitly close the shared Pyodide process (for cleanup)."""
+        async with cls._process_lock:
+            if cls._shared_process is not None:
+                try:
+                    cls._shared_process.terminate()
+                    await cls._shared_process.wait()
+                    logger.info("Closed shared Pyodide process")
+                except Exception as e:
+                    logger.error(f"Error closing shared Pyodide process: {e}")
+                finally:
+                    cls._shared_process = None
+                    cls._initialized = False
+    
     async def writeFile(self, path: str, content: str) -> None:
-        """Write a file to the Pyodide sandbox."""
+        """Write a file to the Pyodide sandbox using persistent process."""
         if not self.available:
             raise SandboxError("Deno is not available for Pyodide execution")
         
-        # For now, we'll execute code to write the file
-        # In the future, we could optimize this with a persistent Pyodide instance
-        code = f'''
-import json
-with open({json.dumps(path)}, 'w') as f:
-    f.write({json.dumps(content)})
-print(f"File written to {{repr({json.dumps(path)})}}")
-'''
-        result = await self.execute_code(code, timeout=10)
-        if not result["success"]:
-            raise SandboxError(f"Failed to write file: {result['error']}")
+        try:
+            # Get or create the persistent process
+            process = await self.get_or_create_process(self._pyodide_script_path)
+            
+            # Create file write request
+            request = {
+                "type": "writeFile",
+                "path": path,
+                "content": content
+            }
+            
+            # Send request as a single line JSON
+            request_json = json.dumps(request) + '\n'
+            process.stdin.write(request_json.encode())
+            await process.stdin.drain()
+            
+            # Read response with timeout
+            try:
+                response_line = await asyncio.wait_for(
+                    process.stdout.readline(),
+                    timeout=10
+                )
+            except asyncio.TimeoutError:
+                raise SandboxError(f"Timeout writing file to {path}")
+            
+            # Parse the response
+            if response_line:
+                result = json.loads(response_line.decode('utf-8'))
+                if not result.get("success", False):
+                    raise SandboxError(f"Failed to write file: {result.get('error', 'Unknown error')}")
+            else:
+                raise SandboxError("No response from Pyodide process")
+                
+        except Exception as e:
+            if isinstance(e, SandboxError):
+                raise
+            raise SandboxError(f"Failed to write file to Pyodide: {str(e)}")
     
 
 

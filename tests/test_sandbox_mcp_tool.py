@@ -30,8 +30,8 @@ class TestSandboxMCPTool:
             {
                 "code": {"type": "string", "description": "Python code to execute"},
                 "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 30},
-                "sandbox_type": {"type": "string", "description": "Sandbox type", "enum": ["e2b", "pyodide"]},
-                "install_packages": {"type": "array", "items": {"type": "string"}, "description": "Packages to install"}
+                "sandbox_type": {"type": "string", "description": "Sandbox type (e2b or pyodide)", "enum": ["e2b", "pyodide"]},
+                "install_packages": {"type": "array", "items": {"type": "string"}, "description": "Packages to install (E2B only)"}
             }
         )
         
@@ -45,13 +45,13 @@ class TestSandboxMCPTool:
     @pytest.mark.asyncio
     async def test_tool_execution_success(self):
         """Test successful tool execution."""
-        with patch('wandb_mcp_server.mcp_tools.execute_sandbox_code.execute_sandbox_code') as mock_execute:
+        with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.execute_sandbox_code') as mock_execute:
             mock_execute.return_value = {
                 "success": True,
                 "output": "Hello, World!\n",
                 "error": None,
                 "logs": [],
-                "sandbox_used": "restricted"
+                "sandbox_used": "pyodide"
             }
             
             # Import here to avoid circular imports during testing
@@ -65,18 +65,18 @@ class TestSandboxMCPTool:
             result_dict = json.loads(result)
             assert result_dict["success"] is True
             assert result_dict["output"] == "Hello, World!\n"
-            assert result_dict["sandbox_used"] == "restricted"
+            assert result_dict["sandbox_used"] == "pyodide"
 
     @pytest.mark.asyncio
     async def test_tool_execution_error(self):
         """Test tool execution with error."""
-        with patch('wandb_mcp_server.mcp_tools.execute_sandbox_code.execute_sandbox_code') as mock_execute:
+        with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.execute_sandbox_code') as mock_execute:
             mock_execute.return_value = {
                 "success": False,
                 "output": "",
                 "error": "NameError: name 'undefined_variable' is not defined",
                 "logs": [],
-                "sandbox_used": "restricted"
+                "sandbox_used": "pyodide"
             }
             
             from wandb_mcp_server.server import execute_sandbox_code_tool
@@ -89,12 +89,12 @@ class TestSandboxMCPTool:
             result_dict = json.loads(result)
             assert result_dict["success"] is False
             assert "NameError" in result_dict["error"]
-            assert result_dict["sandbox_used"] == "restricted"
+            assert result_dict["sandbox_used"] == "pyodide"
 
     @pytest.mark.asyncio
     async def test_tool_exception_handling(self):
         """Test tool exception handling."""
-        with patch('wandb_mcp_server.mcp_tools.execute_sandbox_code.execute_sandbox_code') as mock_execute:
+        with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.execute_sandbox_code') as mock_execute:
             mock_execute.side_effect = Exception("Unexpected error")
             
             from wandb_mcp_server.server import execute_sandbox_code_tool
@@ -112,7 +112,7 @@ class TestSandboxMCPTool:
     @pytest.mark.asyncio
     async def test_tool_with_parameters(self):
         """Test tool execution with various parameters."""
-        with patch('wandb_mcp_server.mcp_tools.execute_sandbox_code.execute_sandbox_code') as mock_execute:
+        with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.execute_sandbox_code') as mock_execute:
             mock_execute.return_value = {
                 "success": True,
                 "output": "Success with E2B\n",
@@ -161,8 +161,8 @@ class TestSandboxAnthropicIntegration:
             {
                 "code": {"type": "string", "description": "Python code to execute"},
                 "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 30},
-                "sandbox_type": {"type": "string", "description": "Sandbox type", "enum": ["e2b", "pyodide"]},
-                "install_packages": {"type": "array", "items": {"type": "string"}, "description": "Packages to install"}
+                "sandbox_type": {"type": "string", "description": "Sandbox type (e2b or pyodide)", "enum": ["e2b", "pyodide"]},
+                "install_packages": {"type": "array", "items": {"type": "string"}, "description": "Packages to install (E2B only)"}
             }
         )
         
@@ -182,13 +182,13 @@ class TestSandboxAnthropicIntegration:
         assert "code" in tool_use["input"]
         
         # Mock the tool execution
-        with patch('wandb_mcp_server.mcp_tools.execute_sandbox_code.execute_sandbox_code') as mock_execute:
+        with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.execute_sandbox_code') as mock_execute:
             mock_execute.return_value = {
                 "success": True,
                 "output": "The square root of 144 is: 12.0\n",
                 "error": None,
                 "logs": [],
-                "sandbox_used": "restricted"
+                "sandbox_used": "pyodide"
             }
             
             from wandb_mcp_server.server import execute_sandbox_code_tool
@@ -231,13 +231,13 @@ class TestSandboxAnthropicIntegration:
         tool_use = extract_anthropic_tool_use(response)
         
         # Mock a failed execution
-        with patch('wandb_mcp_server.mcp_tools.execute_sandbox_code.execute_sandbox_code') as mock_execute:
+        with patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.execute_sandbox_code') as mock_execute:
             mock_execute.return_value = {
                 "success": False,
                 "output": "",
                 "error": "NameError: name 'undefined_variable' is not defined",
                 "logs": [],
-                "sandbox_used": "restricted"
+                "sandbox_used": "pyodide"
             }
             
             from wandb_mcp_server.server import execute_sandbox_code_tool

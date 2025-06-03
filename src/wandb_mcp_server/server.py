@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import asyncio
+import signal
+import atexit
 
 import wandb
 from dotenv import load_dotenv
@@ -320,8 +322,59 @@ def cli():
     # Log sandbox availability
     if _sandbox_available:
         logger.info(f"Code sandbox available: {', '.join(_sandbox_types)}")
+        
+        # Initialize Pyodide sandbox on startup if available
+        if "pyodide" in _sandbox_types:
+            logger.info("Pre-initializing Pyodide sandbox...")
+            async def init_pyodide():
+                try:
+                    from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import PyodideSandbox
+                    # This will trigger the creation of the persistent process
+                    sandbox = PyodideSandbox()
+                    await sandbox.get_or_create_process(sandbox._pyodide_script_path)
+                    logger.info("Pyodide sandbox pre-initialized successfully")
+                except Exception as e:
+                    logger.warning(f"Failed to pre-initialize Pyodide sandbox: {e}")
+            
+            # Run the initialization in a background task
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(init_pyodide())
+            loop.close()
     else:
         logger.info(f"Code sandbox not available: {_sandbox_reason}")
+    
+    # Set up cleanup handlers
+    async def cleanup_sandboxes():
+        """Clean up sandbox resources on shutdown."""
+        logger.info("Cleaning up sandbox resources...")
+        try:
+            from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import E2BSandbox, PyodideSandbox
+            # Clean up E2B sandbox
+            await E2BSandbox.cleanup_shared_sandbox()
+            # Clean up Pyodide sandbox
+            await PyodideSandbox.cleanup_shared_process()
+        except Exception as e:
+            logger.error(f"Error during sandbox cleanup: {e}")
+    
+    def signal_handler(signum, frame):
+        """Handle shutdown signals."""
+        logger.info(f"Received signal {signum}, shutting down...")
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(cleanup_sandboxes())
+        loop.close()
+        sys.exit(0)
+    
+    # Register cleanup handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Also register with atexit for normal exits
+    def atexit_cleanup():
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(cleanup_sandboxes())
+        loop.close()
+    
+    atexit.register(atexit_cleanup)
 
     # Run the server with stdio transport
     mcp.run(transport="stdio")

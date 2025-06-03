@@ -40,26 +40,36 @@ The wandb MCP server exposes a secure, isolated python code sandbox tool to the 
 
 **Option 1: Local Pyodide sandbox - Install Deno**
 
-The local Pyodide sandbox uses Deno to isolate execution from the host system. This will be used if an E2B api is not found, just install Deno to enable this option:
+The local Pyodide sandbox uses Deno to run Python in a WebAssembly environment, providing secure isolation from the host system. This option is automatically used if Deno is installed and no E2B API key is found.
 
 ```bash
 # One-line install for macOS/Linux:
 curl -fsSL https://deno.land/install.sh | sh
 
+# Add Deno to your PATH (if not done automatically):
+echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc  # or ~/.zshrc
+source ~/.bashrc  # or ~/.zshrc
+
 # Or on Windows (PowerShell):
 irm https://deno.land/install.ps1 | iex
 ```
 
-Deno will automatically download the Pyodide runtime when first used.
+After installation, verify Deno is available:
+```bash
+deno --version
+```
+
+Note, first execution may take longer as Pyodide downloads required packages
 
 **Option 2: Hosted E2B sandbox - Set E2B api key**
 
-The sandbox tool will default to E2B is an E2B api key is detected. To use the hosted [E2B](https;//www.e2b.dev) sandbox:
+The sandbox tool will use E2B if an E2B API key is detected. E2B provides persistent cloud VMs with full Python environment:
 
 1. Sign up to E2B at [e2b.dev](https://e2b.dev)
-2. Set the `E2B_API_KEY` environment variable
+2. Get your API key from the E2B dashboard
+3. Set the `E2B_API_KEY` environment variable in the client settings.json
 
-If neither Deno nor an E2B api key are detected then the `execute_sandbox_code_tool` tool will not be added to the wandb MCP server. To explicitly disable the sandbox tool then explicitly set the `DISABLE_CODE_SANDBOX=1` environment variable.
+- To explicitly disable the sandbox tool completely, set `DISABLE_CODE_SANDBOX=1` environment variable
 
 
 ### 3. Installation helpers
@@ -88,12 +98,26 @@ uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.cursor
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.codeium/windsurf/mcp_config.json && uvx wandb login
 ```
 
+### Claude Code
+
+```bash
+claude mcp add wandb -- uvx --from git+https://github.com/wandb/wandb-mcp-server wandb_mcp_server && uvx wandb login
+```
+
+How to pass an environment variable:
+
+```bash
+claude mcp add wandb -e WANDB_API_KEY=your-api-key -- uvx --from git+https://github.com/wandb/wandb-mcp-server wandb_mcp_server
+```
+
 ### Claude Desktop installation
 First ensure `uv` is installed, you might have to use brew to install depite `uv` being available in your terminal.
 
 ```bash
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library/Application\ Support/Claude/claude_desktop_config.json && uvx wandb login
 ```
+
+
 
 ### Writing environment variables to the config file
 
@@ -129,7 +153,6 @@ Arguments passed to `--write_env_vars` must be space separated and the key and v
       ],
       "env": {
         "WANDB_API_KEY": "<insert your wandb key>",
-        "E2B_API_KEY": "<optional: insert your E2B key>"
       }
     }
   }
@@ -167,6 +190,16 @@ The full list of environment variables used to control the server's settings can
 ### Python code sandbox
 - **`execute_sandbox_code_tool`** Execute Python code in secure, isolated sandbox environments, either a hosted E2B sandbox or a local Pyodide sandbox, WebAssembly-based execution that uses Deno to isolate execution from the host system (inspired by [Pydantic AI's Run Python MCP](https://ai.pydantic.dev/mcp/run-python/)). See sandbox setup instructions above.
 
+  **Sandbox Behavior:**
+  - **E2B**: Maintains a single persistent sandbox instance during the MCP server session. Files written in one execution are available in subsequent executions. The sandbox is automatically terminated when the server stops. Default E2B sandbox lifetime is 15 minutes of inactivity (configurable via `E2B_SANDBOX_TIMEOUT_SECONDS`), but is kept alive by code executions.
+  - **Pyodide**: Maintains a persistent Pyodide environment for the lifetime of the MCP server. Files written in one execution are available in subsequent executions. The Pyodide process is initialized when the server starts and terminates when the server stops.
+  
+  **File Operations:**
+  - Both sandboxes support standard Python file I/O operations
+  - Query results from `query_wandb_tool` and `query_weave_traces_tool` can be automatically saved as json files in the sandbox if the LLM passes a filename to `save_filename` to the tool call
+  - Use the `save_filename` parameter to save results: `save_filename="my_data.json"`
+  - Files are saved to `/tmp/` directory in the sandbox
+
 ### Saving Analysis
 - **`create_wandb_report_tool`** Creates a new W&B Report with markdown text and HTML-rendered visualizations.
   Provides a permanent, shareable document for saving analysis findings and generated charts.
@@ -188,6 +221,12 @@ Control which packages can be installed in E2B sandboxes:
 
 #### Cache Settings
 - `E2B_CACHE_TTL_SECONDS`: Execution cache TTL in seconds (default: 900 = 15 minutes)
+
+#### E2B Sandbox Lifetime
+- `E2B_SANDBOX_TIMEOUT_SECONDS`: Sandbox lifetime in seconds (default: 900 = 15 minutes)
+  - The sandbox will automatically shut down after this timeout if no code is executed
+  - Each code execution resets the timeout
+  - Example: `E2B_SANDBOX_TIMEOUT_SECONDS=600` for 10-minute timeout
 
 ## Usage tips
 
@@ -270,3 +309,21 @@ Turn on debug logging for a single sample in 1 test file
 ```
 pytest -s -n 1 "tests/test_query_weave_traces.py::test_query_weave_trace[longest_eval_most_expensive_child]" -v --log-cli-level=DEBUG
 ```
+
+####Sandbox tests
+
+Run sandbox-specific tests:
+
+```bash
+# Unit tests (with mocking, no real sandboxes needed)
+uv run pytest tests/test_sandbox_execution.py -v
+
+# Integration tests (requires E2B_API_KEY or Deno)
+uv run pytest tests/test_sandbox_integration.py -v
+
+# Run all sandbox tests
+uv run pytest tests/test_sandbox*.py -v
+```
+
+For E2B tests, ensure `E2B_API_KEY` is set in your environment or `.env` file.
+For Pyodide tests, ensure Deno is installed and available in your PATH.

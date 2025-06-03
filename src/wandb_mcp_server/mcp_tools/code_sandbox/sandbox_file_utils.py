@@ -62,11 +62,9 @@ async def write_json_to_sandbox(
             if api_key:
                 sandbox = E2BSandbox(api_key)
                 await sandbox.create_sandbox()
-                try:
-                    await sandbox.writeFile(full_path, content)
-                    logger.info(f"Wrote {filename} to E2B sandbox")
-                finally:
-                    await sandbox.close_sandbox()
+                await sandbox.writeFile(full_path, content)
+                await sandbox.close_sandbox()  # Just releases the reference, doesn't close the sandbox
+                logger.info(f"Wrote {filename} to E2B sandbox")
                 return
         
         if "pyodide" in sandbox_types:
