@@ -10,6 +10,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import asyncio
 
 import wandb
 from dotenv import load_dotenv
@@ -47,6 +48,9 @@ from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_models import (
     SandboxExecutionResult,
     SandboxType,
 )
+from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_file_utils import (
+    write_json_to_sandbox,
+)
 from wandb_mcp_server.utils import get_rich_logger, get_server_args
 from wandb_mcp_server.weave_api.models import QueryResult
 
@@ -72,6 +76,7 @@ logger = get_rich_logger(
 # Create an MCP server using FastMCP
 mcp = FastMCP("weave-mcp-server")
 
+# --------------- MCP TOOLS ---------------
 
 @mcp.tool(description=QUERY_WEAVE_TRACES_TOOL_DESCRIPTION)
 async def query_weave_traces_tool(
@@ -88,10 +93,11 @@ async def query_weave_traces_tool(
     truncate_length: int = 200,
     return_full_data: bool = False,
     metadata_only: bool = False,
+    save_filename: str = "",
 ) -> str:
     try:
         # Use paginated query with chunks of 20
-        result: QueryResult = await query_paginated_weave_traces(
+        result_model: QueryResult = await query_paginated_weave_traces(
             entity_name=entity_name,
             project_name=project_name,
             chunk_size=50,
@@ -107,7 +113,18 @@ async def query_weave_traces_tool(
             return_full_data=return_full_data,
             metadata_only=metadata_only,
         )
-        return result.model_dump_json()
+        json_output_string = result_model.model_dump_json()
+
+        if _sandbox_available and save_filename:
+            # Write result to sandbox asynchronously
+            asyncio.create_task(
+                write_json_to_sandbox(
+                    json_data=json_output_string,
+                    filename=save_filename
+                )
+            )
+        
+        return json_output_string
 
     except Exception as e:
         logger.error(f"Error in query_weave_traces_tool: {e}", exc_info=True)
@@ -148,8 +165,28 @@ def query_wandb_tool(
     variables: Dict[str, Any] = None,
     max_items: int = 100,
     items_per_page: int = 20,
+    save_filename: str = "",
 ) -> Dict[str, Any]:
-    return query_paginated_wandb_gql(query, variables, max_items, items_per_page)
+    gql_result = query_paginated_wandb_gql(query, variables, max_items, items_per_page)
+
+    if _sandbox_available and save_filename:
+        # Since this is a sync function, we need to handle async task creation carefully
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Schedule the write task
+                asyncio.create_task(
+                    write_json_to_sandbox(
+                        json_data=gql_result,
+                        filename=save_filename
+                    )
+                )
+            else:
+                logger.warning("No running event loop for query_wandb_tool sandbox write")
+        except RuntimeError:
+            logger.warning("No event loop available for query_wandb_tool sandbox write")
+
+    return gql_result
 
 
 @mcp.tool(description=CREATE_WANDB_REPORT_TOOL_DESCRIPTION)
