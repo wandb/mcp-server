@@ -36,7 +36,12 @@ def check_sandbox_availability() -> tuple[bool, List[str], str]:
     """
     # Check if sandbox is disabled
     if os.getenv("DISABLE_CODE_SANDBOX"):
-        return (False, [], "Code sandbox is disabled via DISABLE_CODE_SANDBOX environment variable")
+        return (
+            False, 
+            [], 
+            "Code sandbox is disabled via DISABLE_CODE_SANDBOX environment variable. "
+            "Remove this variable to enable sandbox functionality."
+        )
     
     available_types = []
     reasons = []
@@ -85,8 +90,32 @@ DEFAULT_TIMEOUT_SECONDS = 30
 MAX_TIMEOUT_SECONDS = 300
 E2B_STARTUP_TIMEOUT_SECONDS = 60
 
+# Configuration validation functions
+def validate_timeout(timeout: int, param_name: str = "timeout") -> int:
+    """Validate timeout value is within acceptable range."""
+    if timeout < 1:
+        raise ValueError(f"{param_name} must be at least 1 second, got {timeout}")
+    if timeout > MAX_TIMEOUT_SECONDS:
+        raise ValueError(f"{param_name} must not exceed {MAX_TIMEOUT_SECONDS} seconds, got {timeout}")
+    return timeout
+
+def get_validated_env_int(env_var: str, default: int, min_val: int = 1, max_val: Optional[int] = None) -> int:
+    """Get and validate integer environment variable."""
+    try:
+        value = int(os.getenv(env_var, str(default)))
+        if value < min_val:
+            logger.warning(f"{env_var}={value} is below minimum {min_val}, using {min_val}")
+            return min_val
+        if max_val is not None and value > max_val:
+            logger.warning(f"{env_var}={value} exceeds maximum {max_val}, using {max_val}")
+            return max_val
+        return value
+    except ValueError:
+        logger.warning(f"Invalid {env_var} value, using default {default}")
+        return default
+
 # Get cache TTL from environment or use default
-CACHE_TTL_SECONDS = int(os.getenv("E2B_CACHE_TTL_SECONDS", str(DEFAULT_CACHE_TTL_SECONDS)))
+CACHE_TTL_SECONDS = get_validated_env_int("E2B_CACHE_TTL_SECONDS", DEFAULT_CACHE_TTL_SECONDS, min_val=60, max_val=3600)
 
 # Package installation security configuration
 # Can be overridden via E2B_PACKAGE_ALLOWLIST and E2B_PACKAGE_DENYLIST env vars
@@ -147,6 +176,10 @@ timeout : int, optional
     Maximum execution time in seconds (default: 30).
 install_packages : list of str, optional
     Additional packages to install for analysis on top of numpy and pandas.
+    - E2B sandbox: Supports dynamic package installation with security filters
+      (configurable via E2B_PACKAGE_ALLOWLIST and E2B_PACKAGE_DENYLIST env vars)
+    - Pyodide sandbox: Pre-loaded with numpy, pandas, matplotlib only. 
+      Additional pure Python packages can be imported but not installed.
 
 Returns
 -------
@@ -246,6 +279,16 @@ class E2BSandbox:
         self.sandbox = None  # Initialize the sandbox attribute
         E2BSandbox._api_key = api_key
     
+    async def __aenter__(self):
+        """Context manager entry - get sandbox reference."""
+        await self.create_sandbox()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - release sandbox reference."""
+        await self.close_sandbox()
+        return False
+    
     @classmethod
     async def get_or_create_sandbox(cls):
         """Get the shared sandbox instance, creating it if necessary."""
@@ -258,9 +301,14 @@ class E2BSandbox:
                 
                 os.environ["E2B_API_KEY"] = cls._api_key
                 
-                # Get timeout from environment or use E2B default (5 minutes)
+                # Get timeout from environment or use E2B default (15 minutes)
                 # E2B expects timeout in seconds, not milliseconds
-                timeout_seconds = int(os.getenv("E2B_SANDBOX_TIMEOUT_SECONDS", "900"))  # 15 minutes default
+                timeout_seconds = get_validated_env_int(
+                    "E2B_SANDBOX_TIMEOUT_SECONDS", 
+                    900,  # 15 minutes default
+                    min_val=60,  # 1 minute minimum
+                    max_val=3600  # 1 hour maximum
+                )
                 logger.info(f"Creating E2B sandbox with timeout: {timeout_seconds}s ({timeout_seconds/60:.1f} minutes)")
                 
                 cls._shared_sandbox = await AsyncSandbox.create(timeout=timeout_seconds)
@@ -337,6 +385,9 @@ class E2BSandbox:
     
     async def execute_code(self, code: str, timeout: int = DEFAULT_TIMEOUT_SECONDS, install_packages_list: Optional[List[str]] = None) -> Dict[str, Any]:
         """Execute Python code in the E2B sandbox."""
+        # Validate timeout
+        timeout = validate_timeout(timeout)
+        
         logger.debug(f"execute_code called, self.sandbox is: {self.sandbox}")
         if not hasattr(self, 'sandbox') or self.sandbox is None:
             logger.debug("self.sandbox not set, calling create_sandbox()")
@@ -439,6 +490,17 @@ class PyodideSandbox:
         self.available = self._check_deno_available()
         self._pyodide_script_path = Path(__file__).parent / "pyodide_sandbox.ts"
     
+    async def __aenter__(self):
+        """Context manager entry - ensure process is ready."""
+        if self.available:
+            await self.get_or_create_process(self._pyodide_script_path)
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - process cleanup handled at shutdown."""
+        # Don't cleanup process here as it's shared across executions
+        return False
+    
     def _check_deno_available(self) -> bool:
         """Check if Deno is available."""
         try:
@@ -483,7 +545,11 @@ class PyodideSandbox:
                         cls._shared_process.kill()
                         await cls._shared_process.wait()
                     cls._shared_process = None
-                    raise SandboxError("Failed to initialize Pyodide sandbox")
+                    raise SandboxError(
+                        "Failed to initialize Pyodide sandbox. "
+                        "Ensure Deno is properly installed and has network access to download Pyodide. "
+                        "Try running: deno --version"
+                    )
                     
             return cls._shared_process
     
@@ -504,8 +570,14 @@ class PyodideSandbox:
     
     async def execute_code(self, code: str, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Dict[str, Any]:
         """Execute Python code using our persistent Pyodide process."""
+        # Validate timeout
+        timeout = validate_timeout(timeout)
+        
         if not self.available:
-            raise SandboxError("Deno is not available for Pyodide execution")
+            raise SandboxError(
+                "Deno is not available for Pyodide execution. "
+                "Install Deno with: curl -fsSL https://deno.land/install.sh | sh"
+            )
         
         if not self._pyodide_script_path.exists():
             raise SandboxError(f"Pyodide script not found at {self._pyodide_script_path}")
@@ -576,9 +648,18 @@ class PyodideSandbox:
         async with cls._process_lock:
             if cls._shared_process is not None:
                 try:
+                    # First try graceful termination
                     cls._shared_process.terminate()
-                    await cls._shared_process.wait()
-                    logger.info("Closed shared Pyodide process")
+                    try:
+                        # Wait for process to exit with timeout
+                        await asyncio.wait_for(cls._shared_process.wait(), timeout=5.0)
+                        logger.info("Pyodide process terminated gracefully")
+                    except asyncio.TimeoutError:
+                        # Force kill if termination times out
+                        logger.warning("Pyodide process did not terminate gracefully, forcing kill")
+                        cls._shared_process.kill()
+                        await cls._shared_process.wait()
+                        logger.info("Pyodide process killed forcefully")
                 except Exception as e:
                     logger.error(f"Error closing shared Pyodide process: {e}")
                 finally:
@@ -588,7 +669,10 @@ class PyodideSandbox:
     async def writeFile(self, path: str, content: str) -> None:
         """Write a file to the Pyodide sandbox using persistent process."""
         if not self.available:
-            raise SandboxError("Deno is not available for Pyodide execution")
+            raise SandboxError(
+                "Deno is not available for Pyodide execution. "
+                "Install Deno with: curl -fsSL https://deno.land/install.sh | sh"
+            )
         
         try:
             # Get or create the persistent process
@@ -635,15 +719,30 @@ class PyodideSandbox:
 # Global cache instance
 _execution_cache = ExecutionCache(ttl_seconds=CACHE_TTL_SECONDS)
 
+# Get rate limit configuration from environment
+RATE_LIMIT_REQUESTS = get_validated_env_int(
+    "SANDBOX_RATE_LIMIT_REQUESTS", 
+    DEFAULT_RATE_LIMIT_REQUESTS,
+    min_val=1,
+    max_val=1000
+)
+RATE_LIMIT_WINDOW_SECONDS = get_validated_env_int(
+    "SANDBOX_RATE_LIMIT_WINDOW_SECONDS",
+    DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
+    min_val=1,
+    max_val=300  # 5 minutes max
+)
+
 # Rate limiting
 class RateLimiter:
     """Simple rate limiter for sandbox executions."""
     
-    def __init__(self, max_requests: int = DEFAULT_RATE_LIMIT_REQUESTS, window_seconds: int = DEFAULT_RATE_LIMIT_WINDOW_SECONDS):
+    def __init__(self, max_requests: int = RATE_LIMIT_REQUESTS, window_seconds: int = RATE_LIMIT_WINDOW_SECONDS):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.requests = []
         self._lock = asyncio.Lock()
+        logger.info(f"Rate limiter configured: {max_requests} requests per {window_seconds} seconds")
     
     async def check_rate_limit(self) -> bool:
         """Check if request is within rate limit."""
@@ -687,14 +786,31 @@ async def execute_sandbox_code(
         }
     
     # Validate timeout
-    if timeout > MAX_TIMEOUT_SECONDS:
+    try:
+        timeout = validate_timeout(timeout)
+    except ValueError as e:
         return {
             "success": False,
             "output": "",
-            "error": f"Timeout cannot exceed {MAX_TIMEOUT_SECONDS} seconds",
+            "error": str(e),
             "logs": [],
             "sandbox_used": "none",
         }
+    
+    # Validate sandbox type if specified
+    valid_sandbox_types = ["e2b", "pyodide", "auto", None]
+    if sandbox_type and sandbox_type not in valid_sandbox_types:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Invalid sandbox_type: '{sandbox_type}'. Must be one of: {', '.join(str(t) for t in valid_sandbox_types[:-1])}",
+            "logs": [],
+            "sandbox_used": "none",
+        }
+    
+    # Normalize "auto" to None for auto-selection
+    if sandbox_type == "auto":
+        sandbox_type = None
     
     # Determine which sandbox to use
     sandboxes_to_try = []
@@ -735,7 +851,11 @@ async def execute_sandbox_code(
         return {
             "success": False,
             "output": "",
-            "error": "No sandboxes available. Please set E2B_API_KEY environment variable or install Deno for Pyodide.",
+            "error": (
+                "No sandboxes available. To enable code execution:\n"
+                "1. For cloud sandbox: Set E2B_API_KEY environment variable (get key at https://e2b.dev)\n"
+                "2. For local sandbox: Install Deno with: curl -fsSL https://deno.land/install.sh | sh"
+            ),
             "logs": [],
             "sandbox_used": "none",
             "execution_time_ms": int((time.time() - start_time) * 1000),
@@ -752,9 +872,13 @@ async def execute_sandbox_code(
                 result = await sandbox.execute_code(code, timeout, install_packages)
                 await sandbox.close_sandbox()
             else:
-                # Pyodide doesn't support package installation
+                # Pyodide doesn't support dynamic package installation
                 if install_packages and sandbox_name == "pyodide":
-                    logger.warning("Pyodide sandbox doesn't support package installation")
+                    logger.warning(
+                        "Pyodide sandbox doesn't support dynamic package installation. "
+                        "Pre-loaded packages: numpy, pandas, matplotlib. "
+                        "Additional packages can be imported if they're pure Python."
+                    )
                 result = await sandbox.execute_code(code, timeout)
             
             # Add sandbox info and execution time

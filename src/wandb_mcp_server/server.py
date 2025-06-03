@@ -50,9 +50,7 @@ from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_models import (
     SandboxExecutionResult,
     SandboxType,
 )
-from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_file_utils import (
-    write_json_to_sandbox,
-)
+from wandb_mcp_server.mcp_tools.tools_utils import save_result_to_sandbox_if_requested
 from wandb_mcp_server.utils import get_rich_logger, get_server_args
 from wandb_mcp_server.weave_api.models import QueryResult
 
@@ -117,14 +115,12 @@ async def query_weave_traces_tool(
         )
         json_output_string = result_model.model_dump_json()
 
-        if _sandbox_available and save_filename:
-            # Write result to sandbox asynchronously
-            asyncio.create_task(
-                write_json_to_sandbox(
-                    json_data=json_output_string,
-                    filename=save_filename
-                )
-            )
+        # Save to sandbox if requested
+        await save_result_to_sandbox_if_requested(
+            result=json_output_string,
+            save_filename=save_filename,
+            logger=logger
+        )
         
         return json_output_string
 
@@ -162,7 +158,7 @@ async def count_weave_traces_tool(
 
 
 @mcp.tool(description=QUERY_WANDB_GQL_TOOL_DESCRIPTION)
-def query_wandb_tool(
+async def query_wandb_tool(
     query: str,
     variables: Dict[str, Any] = None,
     max_items: int = 100,
@@ -171,22 +167,12 @@ def query_wandb_tool(
 ) -> Dict[str, Any]:
     gql_result = query_paginated_wandb_gql(query, variables, max_items, items_per_page)
 
-    if _sandbox_available and save_filename:
-        # Since this is a sync function, we need to handle async task creation carefully
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Schedule the write task
-                asyncio.create_task(
-                    write_json_to_sandbox(
-                        json_data=gql_result,
-                        filename=save_filename
-                    )
-                )
-            else:
-                logger.warning("No running event loop for query_wandb_tool sandbox write")
-        except RuntimeError:
-            logger.warning("No event loop available for query_wandb_tool sandbox write")
+    # Save to sandbox if requested
+    await save_result_to_sandbox_if_requested(
+        result=gql_result,
+        save_filename=save_filename,
+        logger=logger
+    )
 
     return gql_result
 

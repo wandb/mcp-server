@@ -14,8 +14,8 @@ from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import (
     PyodideSandbox,
     ExecutionCache,
     RateLimiter,
-    E2BSandboxPool,
     SandboxError,
+    check_sandbox_availability,
 )
 
 load_dotenv()
@@ -118,52 +118,8 @@ class TestRateLimiter:
         assert await limiter.check_rate_limit() is True
 
 
-class TestE2BSandboxPool:
-    """Test E2B sandbox pooling."""
-    
-    @pytest.mark.asyncio
-    @patch('e2b_code_interpreter.AsyncSandbox')
-    async def test_pool_initialization(self, mock_sandbox_class):
-        """Test pool initialization."""
-        # Mock sandbox creation
-        mock_sandbox = AsyncMock()
-        mock_sandbox_class.create = AsyncMock(return_value=mock_sandbox)
-        
-        pool = E2BSandboxPool("test_api_key", pool_size=2)
-        await pool.initialize()
-        
-        # Should create 2 sandboxes
-        assert mock_sandbox_class.create.call_count == 2
-        assert len(pool.all_sandboxes) == 2
-    
-    @pytest.mark.asyncio
-    @patch('e2b_code_interpreter.AsyncSandbox')
-    async def test_pool_acquire_release(self, mock_sandbox_class):
-        """Test acquiring and releasing sandboxes from pool."""
-        mock_sandbox1 = AsyncMock()
-        mock_sandbox2 = AsyncMock()
-        mock_sandbox_class.create = AsyncMock(side_effect=[mock_sandbox1, mock_sandbox2])
-        
-        pool = E2BSandboxPool("test_api_key", pool_size=2)
-        await pool.initialize()
-        
-        # Acquire sandboxes
-        sb1 = await pool.acquire()
-        sb2 = await pool.acquire()
-        
-        assert sb1 == mock_sandbox1
-        assert sb2 == mock_sandbox2
-        
-        # Pool should be empty now
-        with pytest.raises(SandboxError):
-            await pool.acquire(timeout=0.1)
-        
-        # Release one back
-        await pool.release(sb1)
-        
-        # Should be able to acquire again
-        sb3 = await pool.acquire()
-        assert sb3 == sb1  # Same sandbox
+# Removed TestE2BSandboxPool class as E2BSandboxPool has been removed from the codebase
+# E2B now uses a single persistent sandbox instance instead of a pool
 
 
 class TestE2BSandbox:
@@ -171,22 +127,24 @@ class TestE2BSandbox:
     
     @pytest.mark.asyncio
     @patch('os.getenv')
-    @patch('wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.E2BSandboxPool')
-    async def test_sandbox_pool_usage(self, mock_pool_class, mock_getenv):
-        """Test that E2B uses the pool when available."""
+    @patch('e2b_code_interpreter.AsyncSandbox')
+    async def test_sandbox_creation(self, mock_sandbox_class, mock_getenv):
+        """Test that E2B creates a shared sandbox instance."""
         mock_getenv.return_value = "test_api_key"
         
-        # Mock pool
-        mock_pool = AsyncMock()
+        # Mock sandbox creation
         mock_sandbox = AsyncMock()
-        mock_pool.acquire = AsyncMock(return_value=mock_sandbox)
-        mock_pool_class.return_value = mock_pool
+        mock_sandbox_class.create = AsyncMock(return_value=mock_sandbox)
+        
+        # Clear any existing shared sandbox
+        E2BSandbox._shared_sandbox = None
         
         sandbox = E2BSandbox("test_api_key")
         await sandbox.create_sandbox()
         
+        # Should use the shared sandbox
         assert sandbox.sandbox == mock_sandbox
-        assert sandbox._acquired_from_pool is True
+        mock_sandbox_class.create.assert_called_once()
     
     @pytest.mark.asyncio
     @patch('e2b_code_interpreter.AsyncSandbox')
