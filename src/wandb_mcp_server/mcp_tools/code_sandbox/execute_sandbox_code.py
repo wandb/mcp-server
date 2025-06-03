@@ -15,6 +15,7 @@ import time
 from typing import Any, Dict, List, Optional
 from collections import OrderedDict
 from datetime import datetime, timedelta
+from pathlib import Path
 
 
 from wandb_mcp_server.utils import get_rich_logger
@@ -467,6 +468,17 @@ class E2BSandbox:
             finally:
                 self.sandbox = None
                 self._acquired_from_pool = False
+    
+    async def writeFile(self, path: str, content: str) -> None:
+        """Write a file to the E2B sandbox using native file operations."""
+        if not self.sandbox:
+            await self.create_sandbox()
+        
+        try:
+            await self.sandbox.files.write(path, content)
+            logger.debug(f"Wrote file to E2B sandbox: {path}")
+        except Exception as e:
+            raise SandboxError(f"Failed to write file to E2B sandbox: {e}")
 
 
 class PyodideSandbox:
@@ -474,6 +486,9 @@ class PyodideSandbox:
     
     def __init__(self):
         self.available = self._check_deno_available()
+        self._pyodide_script_path = Path(__file__).parent / "pyodide_sandbox.ts"
+        self._process = None
+        self._initialized = False
     
     def _check_deno_available(self) -> bool:
         """Check if Deno is available."""
@@ -489,49 +504,42 @@ class PyodideSandbox:
             return False
     
     async def execute_code(self, code: str, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Dict[str, Any]:
-        """Execute Python code using Pydantic's Deno-based Pyodide MCP server."""
+        """Execute Python code using our direct Pyodide implementation."""
         if not self.available:
             raise SandboxError("Deno is not available for Pyodide execution")
         
+        if not self._pyodide_script_path.exists():
+            raise SandboxError(f"Pyodide script not found at {self._pyodide_script_path}")
+        
         try:
-            # Create an MCP request for Pydantic's run-python server
-            mcp_request = {
-                "jsonrpc": "2.0",
-                "method": "tools/call",
-                "params": {
-                    "name": "run_python_code",
-                    "arguments": {
-                        "code": code
-                    }
-                },
-                "id": 1
+            # Create execution request
+            request = {
+                "code": code,
+                "timeout": timeout
             }
             
-            # Run Pydantic's MCP server with Deno
-            # Using stdin/stdout for communication
+            # Run our Pyodide sandbox with Deno
             process = await asyncio.create_subprocess_exec(
                 'deno', 'run',
-                '-N',  # Network access for package downloads
-                '-R=node_modules',  # Read access to node_modules
-                '-W=node_modules',  # Write access to node_modules
-                '--node-modules-dir=auto',
-                'jsr:@pydantic/mcp-run-python',
-                'stdio',  # Use stdio mode for direct communication
+                '--allow-net=cdn.jsdelivr.net,pyodide-cdn2.iodide.org',  # For downloading Pyodide
+                '--allow-read',  # To read local files
+                '--allow-write=.',  # To write output files
+                str(self._pyodide_script_path),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             
-            # Send the MCP request
-            request_str = json.dumps(mcp_request) + '\n'
-            process.stdin.write(request_str.encode())
+            # Send the request
+            request_json = json.dumps(request)
+            process.stdin.write(request_json.encode())
             await process.stdin.drain()
             process.stdin.close()
             
             try:
                 stdout, stderr = await asyncio.wait_for(
                     process.communicate(),
-                    timeout=timeout
+                    timeout=timeout + 5  # Give extra time for process overhead
                 )
             except asyncio.TimeoutError:
                 process.kill()
@@ -543,80 +551,58 @@ class PyodideSandbox:
                     "logs": [],
                 }
             
-            # Parse the MCP response
+            # Parse the response
             try:
-                # The response might have multiple lines, get the last valid JSON
-                lines = stdout.decode('utf-8').strip().split('\n')
-                response = None
-                for line in reversed(lines):
-                    if line.strip():
-                        try:
-                            response = json.loads(line)
-                            break
-                        except json.JSONDecodeError:
-                            continue
-                
-                if not response:
-                    raise ValueError("No valid JSON response found")
-                
-                # Extract the result from MCP response
-                if "result" in response and "content" in response["result"]:
-                    content = response["result"]["content"]
-                    # Handle different content formats
-                    if isinstance(content, list) and content:
-                        # Extract text from content blocks
-                        output_parts = []
-                        error_parts = []
-                        for item in content:
-                            if isinstance(item, dict) and "text" in item:
-                                text = item["text"]
-                                if "error" in text.lower() or "traceback" in text.lower():
-                                    error_parts.append(text)
-                                else:
-                                    output_parts.append(text)
-                        
-                        output = "\n".join(output_parts)
-                        error = "\n".join(error_parts) if error_parts else None
-                        success = not bool(error_parts)
-                    else:
-                        # Fallback for simple string content
-                        output = str(content)
-                        error = None
-                        success = True
-                    
-                    return {
-                        "success": success,
-                        "output": output,
-                        "error": error,
-                        "logs": [output] if output else [],
-                    }
-                elif "error" in response:
+                if stdout:
+                    # The stdout should contain our JSON response
+                    result = json.loads(stdout.decode('utf-8'))
+                    return result
+                else:
+                    # If no stdout, check stderr for errors
+                    error_msg = stderr.decode('utf-8', errors='replace') if stderr else "No output from Pyodide"
                     return {
                         "success": False,
                         "output": "",
-                        "error": response["error"].get("message", "Unknown error"),
+                        "error": error_msg,
                         "logs": [],
                     }
-                else:
-                    raise ValueError("Unexpected response format")
                     
-            except (json.JSONDecodeError, ValueError) as e:
-                # If we can't parse the response, check stderr for errors
-                error_msg = stderr.decode('utf-8', errors='replace') if stderr else str(e)
+            except json.JSONDecodeError as e:
+                # If we can't parse the response, return error info
+                error_msg = f"Failed to parse response: {e}"
+                if stderr:
+                    error_msg += f"\nStderr: {stderr.decode('utf-8', errors='replace')}"
                 return {
                     "success": False,
-                    "output": "",
-                    "error": f"Failed to parse MCP response: {error_msg}",
-                    "logs": [stdout.decode('utf-8', errors='replace')] if stdout else [],
+                    "output": stdout.decode('utf-8', errors='replace') if stdout else "",
+                    "error": error_msg,
+                    "logs": [],
                 }
             
         except Exception as e:
             return {
                 "success": False,
                 "output": "",
-                "error": f"Deno Pyodide execution failed: {str(e)}",
+                "error": f"Pyodide execution failed: {str(e)}",
                 "logs": [],
             }
+    
+    async def writeFile(self, path: str, content: str) -> None:
+        """Write a file to the Pyodide sandbox."""
+        if not self.available:
+            raise SandboxError("Deno is not available for Pyodide execution")
+        
+        # For now, we'll execute code to write the file
+        # In the future, we could optimize this with a persistent Pyodide instance
+        code = f'''
+import json
+with open({json.dumps(path)}, 'w') as f:
+    f.write({json.dumps(content)})
+print(f"File written to {{repr({json.dumps(path)})}}")
+'''
+        result = await self.execute_code(code, timeout=10)
+        if not result["success"]:
+            raise SandboxError(f"Failed to write file: {result['error']}")
     
 
 
@@ -657,6 +643,7 @@ async def execute_sandbox_code(
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
     sandbox_type: Optional[str] = None,
     install_packages: Optional[List[str]] = None,
+    return_sandbox: bool = False,
 ) -> Dict[str, Any]:
     """
     Execute Python code in a secure sandbox environment.
@@ -749,6 +736,11 @@ async def execute_sandbox_code(
             # Add sandbox info and execution time
             result["sandbox_used"] = sandbox_name
             result["execution_time_ms"] = int((time.time() - start_time) * 1000)
+            
+            # Optionally include sandbox instance for file operations
+            if return_sandbox:
+                result["_sandbox_instance"] = sandbox
+                result["_sandbox_type"] = sandbox_name
             
             # Cache successful results
             if result["success"]:
