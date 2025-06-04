@@ -40,7 +40,7 @@ from wandb_mcp_server.mcp_tools.query_weave import (
     QUERY_WEAVE_TRACES_TOOL_DESCRIPTION,
     query_paginated_weave_traces,
 )
-from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import (
+from wandb_mcp_server.mcp_tools.code_sandbox import (
     EXECUTE_SANDBOX_CODE_TOOL_DESCRIPTION,
     execute_sandbox_code,
     check_sandbox_availability,
@@ -311,30 +311,41 @@ def cli():
         
         # Initialize Pyodide sandbox on startup if available
         if "pyodide" in _sandbox_types:
-            logger.info("Pre-initializing Pyodide sandbox...")
+            logger.info("Pre-initializing Pyodide sandbox and downloading packages...")
             async def init_pyodide():
                 try:
-                    from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import PyodideSandbox
-                    # This will trigger the creation of the persistent process
-                    sandbox = PyodideSandbox()
-                    await sandbox.get_or_create_process(sandbox._pyodide_script_path)
-                    logger.info("Pyodide sandbox pre-initialized successfully")
+                    from wandb_mcp_server.mcp_tools.code_sandbox import PyodideSandbox
+                    # This will initialize Pyodide and download packages
+                    await PyodideSandbox.initialize_early()
                 except Exception as e:
                     logger.warning(f"Failed to pre-initialize Pyodide sandbox: {e}")
             
-            # Run the initialization in a background task
             loop = asyncio.new_event_loop()
             loop.run_until_complete(init_pyodide())
             loop.close()
     else:
         logger.info(f"Code sandbox not available: {_sandbox_reason}")
+        
+        # Provide helpful instructions if sandbox is desired but not available
+        if not os.getenv("DISABLE_CODE_SANDBOX"):
+            logger.info("\n" + "="*60)
+            logger.info("To enable code execution, you can:")
+            logger.info("1. For local execution: Install Deno")
+            logger.info("   - macOS/Linux: curl -fsSL https://deno.land/install.sh | sh")
+            logger.info("   - Windows: irm https://deno.land/install.ps1 | iex")
+            logger.info("   - Add to PATH: export PATH=\"$HOME/.deno/bin:$PATH\"")
+            logger.info("2. For cloud execution: Set E2B_API_KEY")
+            logger.info("   - Sign up at https://e2b.dev")
+            logger.info("   - Get your API key from the dashboard")
+            logger.info("3. To disable this message: Set DISABLE_CODE_SANDBOX=1")
+            logger.info("="*60 + "\n")
     
     # Set up cleanup handlers
     async def cleanup_sandboxes():
         """Clean up sandbox resources on shutdown."""
         logger.info("Cleaning up sandbox resources...")
         try:
-            from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import E2BSandbox, PyodideSandbox
+            from wandb_mcp_server.mcp_tools.code_sandbox import E2BSandbox, PyodideSandbox
             # Clean up E2B sandbox
             await E2BSandbox.cleanup_shared_sandbox()
             # Clean up Pyodide sandbox
