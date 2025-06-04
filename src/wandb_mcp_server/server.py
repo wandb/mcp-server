@@ -18,10 +18,15 @@ import wandb
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-from wandb_mcp_server.query_models import list_entity_projects
-from wandb_mcp_server.report import create_report
-from wandb_mcp_server.tool_prompts import (
+from wandb_mcp_server.mcp_tools.list_wandb_entities_projects import (
+    LIST_ENTITY_PROJECTS_TOOL_DESCRIPTION,
+    list_entity_projects
+)
+from wandb_mcp_server.mcp_tools.create_report import (
     CREATE_WANDB_REPORT_TOOL_DESCRIPTION,
+    create_report
+)
+from wandb_mcp_server.tool_prompts import (
     LIST_ENTITY_PROJECTS_TOOL_DESCRIPTION,
 )
 from wandb_mcp_server.mcp_tools.count_traces import (
@@ -47,8 +52,7 @@ from wandb_mcp_server.mcp_tools.code_sandbox import (
 )
 from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_models import (
     SandboxExecutionRequest,
-    SandboxExecutionResult,
-    SandboxType,
+    SandboxExecutionResult
 )
 from wandb_mcp_server.mcp_tools.tools_utils import save_result_to_sandbox_if_requested
 from wandb_mcp_server.utils import get_rich_logger, get_server_args
