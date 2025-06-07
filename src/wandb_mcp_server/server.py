@@ -26,9 +26,6 @@ from wandb_mcp_server.mcp_tools.create_report import (
     CREATE_WANDB_REPORT_TOOL_DESCRIPTION,
     create_report
 )
-from wandb_mcp_server.tool_prompts import (
-    LIST_ENTITY_PROJECTS_TOOL_DESCRIPTION,
-)
 from wandb_mcp_server.mcp_tools.count_traces import (
     COUNT_WEAVE_TRACES_TOOL_DESCRIPTION,
     count_traces,
