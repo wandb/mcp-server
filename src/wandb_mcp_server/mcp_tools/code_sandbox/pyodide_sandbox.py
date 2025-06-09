@@ -290,7 +290,7 @@ class PyodideSandbox:
             await sandbox.get_or_create_process(sandbox._pyodide_script_path)
             
             # Execute a simple command to trigger package loading
-            result = await sandbox.execute("print('Pyodide initialized successfully')", timeout=60)
+            result = await sandbox.execute_code("print('Pyodide initialized successfully')", timeout=60)
             
             if result.get("success"):
                 logger.info("Pyodide packages downloaded and ready for use")
