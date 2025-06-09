@@ -1,3 +1,5 @@
+/// <reference types="https://deno.land/x/deno/cli/build/main.d.ts" />
+
 #!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env
 
 /**
@@ -108,8 +110,13 @@ class PyodideSandbox {
       const timeoutId = setTimeout(() => controller.abort(), timeout * 1000);
 
       try {
-        await this.pyodide.runPythonAsync(request.code!);
+        const executionResult = await this.pyodide.runPythonAsync(request.code!);
         result.success = true;
+        result.output = outputLines.join("");
+        if (executionResult !== undefined && executionResult !== null) {
+          if (result.output) result.output += "\\n";
+          result.output += String(executionResult);
+        }
       } catch (error: any) {
         result.error = error.toString();
         if (error.type === "PythonError") {
@@ -120,8 +127,6 @@ class PyodideSandbox {
         clearTimeout(timeoutId);
       }
 
-      // Capture output
-      result.output = outputLines.join("");
       if (errorLines.length > 0) {
         result.logs.push(...errorLines);
       }
@@ -176,6 +181,7 @@ class PyodideSandbox {
 let globalSandbox: PyodideSandbox | null = null;
 
 // Main execution when called directly
+// deno-lint-ignore-file no-explicit-any
 if (import.meta.main) {
   // Initialize sandbox once on startup
   if (!globalSandbox) {
@@ -195,7 +201,7 @@ if (import.meta.main) {
       if (done) break;
       
       if (value) {
-        const lines = decoder.decode(value).trim().split('\n');
+        const lines = decoder.decode(value).trim().split('\\n');
         for (const line of lines) {
           if (!line) continue;
           
