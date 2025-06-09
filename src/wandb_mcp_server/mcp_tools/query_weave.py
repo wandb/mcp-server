@@ -371,17 +371,17 @@ async def query_paginated_weave_traces(
 ) -> QueryResult:
     """
     Query Weave traces with pagination and return results as a Pydantic model.
-    
+
     This maintains the original signature of query_paginated_weave_traces from query_weave.py,
     but delegates to our new implementation and returns a Pydantic QueryResult model directly.
-    
+
     Example:
         ```python
         result = await query_paginated_weave_traces(
             entity_name="my-entity",
             project_name="my-project"
         )
-        
+
         # Access Pydantic model properties directly
         print(f"Total traces: {result.metadata.total_traces}")
         ```
@@ -442,5 +442,7 @@ async def query_paginated_weave_traces(
         # Convert back to QueryResult
         result = QueryResult.model_validate(result_dict)
 
-    assert isinstance(result, QueryResult), f"Result type must be a QueryResult, found: {type(result)}"
+    assert isinstance(result, QueryResult), (
+        f"Result type must be a QueryResult, found: {type(result)}"
+    )
     return result

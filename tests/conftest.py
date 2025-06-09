@@ -298,12 +298,16 @@ def pytest_sessionfinish(session):
                 )
 
                 # Sanitize source_file_name for use in eval name
-                sanitized_source_name = source_file_name.replace('_', '-')
-                
-                overall_eval_name = f"mcp-eval_{sanitized_source_name}_{git_commit_id_from_tests}"
+                sanitized_source_name = source_file_name.replace("_", "-")
+
+                overall_eval_name = (
+                    f"mcp-eval_{sanitized_source_name}_{git_commit_id_from_tests}"
+                )
                 aggregated_dataset_name = f"{sanitized_source_name}_tests"
 
-                logger.info(f"(ID: {invocation_id}) Master: Logging to Weave Eval for file '{source_file_name}': Name='{overall_eval_name}', Commit='{git_commit_id_from_tests}', Dataset='{aggregated_dataset_name}'")
+                logger.info(
+                    f"(ID: {invocation_id}) Master: Logging to Weave Eval for file '{source_file_name}': Name='{overall_eval_name}', Commit='{git_commit_id_from_tests}', Dataset='{aggregated_dataset_name}'"
+                )
 
                 try:
                     session_eval_logger = EvaluationLogger(

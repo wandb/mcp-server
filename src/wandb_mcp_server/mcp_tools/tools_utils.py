@@ -5,11 +5,12 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+
 # _map_python_type_to_json_schema remains the same...
 def _map_python_type_to_json_schema(py_type: Type[Any]) -> Dict[str, Any]:
     """Maps Python types to JSON Schema type definitions."""
-    origin = getattr(py_type, '__origin__', None)
-    args = getattr(py_type, '__args__', ())
+    origin = getattr(py_type, "__origin__", None)
+    args = getattr(py_type, "__args__", ())
 
     if py_type is str:
         return {"type": "string"}
@@ -20,32 +21,33 @@ def _map_python_type_to_json_schema(py_type: Type[Any]) -> Dict[str, Any]:
     elif py_type is bool:
         return {"type": "boolean"}
     elif py_type is list or origin is list:
-        items_schema = {"type": "string"} # Default for untyped lists
+        items_schema = {"type": "string"}  # Default for untyped lists
         if args and args[0] is not Any:
-             items_schema = _map_python_type_to_json_schema(args[0])
+            items_schema = _map_python_type_to_json_schema(args[0])
         return {"type": "array", "items": items_schema}
     elif py_type is dict or origin is dict:
         # Basic object type, doesn't specify properties for simplicity
         # Might need refinement if nested structures are common and need schema
-        return {"type": "object", "additionalProperties": True} # Allow any properties
+        return {"type": "object", "additionalProperties": True}  # Allow any properties
     elif origin is Union:
-         # Handle Optional[T] -> T (represented as Union[T, NoneType])
-         # And basic Union types, favouring the first non-None type
-         non_none_types = [t for t in args if t is not type(None)]
-         if len(non_none_types) > 0:
-             # If it was Optional[T], is_optional flag handles 'required' status later
-             # For Union[A, B], just use the first type's schema for simplicity.
-             # A more complex approach could use 'anyOf'.
-             return _map_python_type_to_json_schema(non_none_types[0])
-         else:
-             return {"type": "null"} # Should only happen for Union[NoneType]
+        # Handle Optional[T] -> T (represented as Union[T, NoneType])
+        # And basic Union types, favouring the first non-None type
+        non_none_types = [t for t in args if t is not type(None)]
+        if len(non_none_types) > 0:
+            # If it was Optional[T], is_optional flag handles 'required' status later
+            # For Union[A, B], just use the first type's schema for simplicity.
+            # A more complex approach could use 'anyOf'.
+            return _map_python_type_to_json_schema(non_none_types[0])
+        else:
+            return {"type": "null"}  # Should only happen for Union[NoneType]
     elif py_type is Any:
-         # Any type can be represented loosely, e.g., allowing any type
-         return {} # Represents any type in JSON Schema when empty
+        # Any type can be represented loosely, e.g., allowing any type
+        return {}  # Represents any type in JSON Schema when empty
     else:
         # Default or unknown types
         # Consider logging a warning for unknown types
-        return {"type": "string"} # Default to string if unknown
+        return {"type": "string"}  # Default to string if unknown
+
 
 def _parse_docstring(docstring: str) -> Tuple[Dict[str, str], str]:
     """
@@ -72,7 +74,7 @@ def _parse_docstring(docstring: str) -> Tuple[Dict[str, str], str]:
             if stripped_lower in potential_headers:
                 header_found = True
                 # Check for optional '---' separator line immediately after
-                if i + 1 < len(lines) and lines[i+1].strip().startswith("---"):
+                if i + 1 < len(lines) and lines[i + 1].strip().startswith("---"):
                     param_definitions_start_index = i + 2
                 else:
                     param_definitions_start_index = i + 1
@@ -80,14 +82,16 @@ def _parse_docstring(docstring: str) -> Tuple[Dict[str, str], str]:
             elif stripped_line:
                 main_description_lines.append(stripped_line)
         elif i >= param_definitions_start_index:
-             # Break early if we found the header and are past the definition start line
-             # The next loop will handle parsing from here
-             break
+            # Break early if we found the header and are past the definition start line
+            # The next loop will handle parsing from here
+            break
 
     main_description = "\n".join(main_description_lines).strip()
 
     # 2. Process Parameters section if found
-    if param_definitions_start_index != -1 and param_definitions_start_index < len(lines):
+    if param_definitions_start_index != -1 and param_definitions_start_index < len(
+        lines
+    ):
         current_param_name = None
         current_param_desc_lines = []
         param_def_indent = -1
@@ -95,11 +99,13 @@ def _parse_docstring(docstring: str) -> Tuple[Dict[str, str], str]:
 
         for i in range(param_definitions_start_index, len(lines)):
             line = lines[i]
-            current_indent = len(line) - len(line.lstrip(' '))
+            current_indent = len(line) - len(line.lstrip(" "))
             stripped_line = line.strip()
 
             # Regex to find 'name :' at the start of the stripped line
-            param_match = re.match(r'^(?P<name>[a-zA-Z_]\w*)\s*:(?P<desc_start>.*)$', stripped_line)
+            param_match = re.match(
+                r"^(?P<name>[a-zA-Z_]\w*)\s*:(?P<desc_start>.*)$", stripped_line
+            )
 
             # --- Determine if this line starts a new parameter ---
             is_new_parameter_line = False
@@ -117,35 +123,45 @@ def _parse_docstring(docstring: str) -> Tuple[Dict[str, str], str]:
                     if expected_desc_indent != -1:
                         # If we have an established description indent
                         if current_indent < expected_desc_indent:
-                            is_new_parameter_line = True # Definitely ends previous block
+                            is_new_parameter_line = (
+                                True  # Definitely ends previous block
+                            )
                     elif current_indent <= param_def_indent:
-                         # If no description started yet, or if back at original indent
-                         is_new_parameter_line = True
+                        # If no description started yet, or if back at original indent
+                        is_new_parameter_line = True
 
             # --- Process based on whether it's a new parameter line ---
             if is_new_parameter_line:
                 # Save the previous parameter's description
                 if current_param_name:
-                    param_descriptions[current_param_name] = "\n".join(current_param_desc_lines).strip()
+                    param_descriptions[current_param_name] = "\n".join(
+                        current_param_desc_lines
+                    ).strip()
 
                 # Start the new parameter
-                current_param_name = param_match.group('name')
-                desc_start = param_match.group('desc_start').strip()
-                current_param_desc_lines = [desc_start] if desc_start else [] # Use first line if present
+                current_param_name = param_match.group("name")
+                desc_start = param_match.group("desc_start").strip()
+                current_param_desc_lines = (
+                    [desc_start] if desc_start else []
+                )  # Use first line if present
                 param_def_indent = current_indent
-                expected_desc_indent = -1 # Reset for the new parameter
+                expected_desc_indent = -1  # Reset for the new parameter
 
             elif current_param_name:
                 # We are inside a parameter's block, and this line is not starting a new param
                 if not stripped_line:
-                     # Handle blank lines within the description
-                     # Keep blank lines if they are indented same/more than expected desc indent OR
-                     # if they are more indented than param def and we haven't set expected yet.
-                     if (expected_desc_indent != -1 and current_indent >= expected_desc_indent) or \
-                        (expected_desc_indent == -1 and current_indent > param_def_indent):
-                          current_param_desc_lines.append("") # Preserve paragraph breaks
-                     # Otherwise, ignore blank lines that break indentation pattern
-                     continue
+                    # Handle blank lines within the description
+                    # Keep blank lines if they are indented same/more than expected desc indent OR
+                    # if they are more indented than param def and we haven't set expected yet.
+                    if (
+                        expected_desc_indent != -1
+                        and current_indent >= expected_desc_indent
+                    ) or (
+                        expected_desc_indent == -1 and current_indent > param_def_indent
+                    ):
+                        current_param_desc_lines.append("")  # Preserve paragraph breaks
+                    # Otherwise, ignore blank lines that break indentation pattern
+                    continue
 
                 # This is a non-empty, non-param-starting line within a block
                 if expected_desc_indent == -1:
@@ -155,8 +171,10 @@ def _parse_docstring(docstring: str) -> Tuple[Dict[str, str], str]:
                         current_param_desc_lines.append(stripped_line)
                     else:
                         # Indentation is not correct for a description start. End of this param.
-                        if current_param_name: # Save description if any collected
-                           param_descriptions[current_param_name] = "\n".join(current_param_desc_lines).strip()
+                        if current_param_name:  # Save description if any collected
+                            param_descriptions[current_param_name] = "\n".join(
+                                current_param_desc_lines
+                            ).strip()
                         current_param_name = None
                         # Assume end of parameters section, stop parsing this section
                         break
@@ -166,19 +184,23 @@ def _parse_docstring(docstring: str) -> Tuple[Dict[str, str], str]:
                 else:
                     # Indentation decreased below expected description indent. End of this parameter's description.
                     if current_param_name:
-                         param_descriptions[current_param_name] = "\n".join(current_param_desc_lines).strip()
+                        param_descriptions[current_param_name] = "\n".join(
+                            current_param_desc_lines
+                        ).strip()
                     current_param_name = None
                     # Assume end of parameters section, stop parsing this section
                     break
             else:
-                 # We are not inside a parameter block, and this line doesn't start one.
-                 # If the line has content, it must be the end of the Parameters section.
-                 if stripped_line:
-                      break # Stop parsing parameters section
+                # We are not inside a parameter block, and this line doesn't start one.
+                # If the line has content, it must be the end of the Parameters section.
+                if stripped_line:
+                    break  # Stop parsing parameters section
 
         # Save the last parameter description after the loop finishes
         if current_param_name:
-            param_descriptions[current_param_name] = "\n".join(current_param_desc_lines).strip()
+            param_descriptions[current_param_name] = "\n".join(
+                current_param_desc_lines
+            ).strip()
 
     # Filter out empty descriptions that might result from parsing issues or empty entries
     param_descriptions = {k: v for k, v in param_descriptions.items() if v}
@@ -187,7 +209,9 @@ def _parse_docstring(docstring: str) -> Tuple[Dict[str, str], str]:
 
 
 # generate_anthropic_tool_schema remains the same, but needs slight adjustment for required logic
-def generate_anthropic_tool_schema(func: Callable[..., Any], description: str | None = None) -> Dict[str, Any]:
+def generate_anthropic_tool_schema(
+    func: Callable[..., Any], description: str | None = None
+) -> Dict[str, Any]:
     """
     Generates an Anthropic tool schema dictionary from a Python function.
 
@@ -203,24 +227,23 @@ def generate_anthropic_tool_schema(func: Callable[..., Any], description: str | 
     # Use provided description if available, otherwise use parsed main description
     final_description = description if description is not None else main_description
 
-
     properties = {}
     required_params = []
 
     for name, param in signature.parameters.items():
-        if name in ('self', 'cls'): # Skip self/cls for methods
-             continue
+        if name in ("self", "cls"):  # Skip self/cls for methods
+            continue
 
         schema = {}
         param_type = param.annotation
 
         # --- Type Mapping ---
         if param_type is not inspect.Parameter.empty:
-             type_schema = _map_python_type_to_json_schema(param_type)
-             schema.update(type_schema)
+            type_schema = _map_python_type_to_json_schema(param_type)
+            schema.update(type_schema)
         else:
-             # Default to string if no type hint
-             schema["type"] = "string"
+            # Default to string if no type hint
+            schema["type"] = "string"
 
         # --- Description ---
         # Get description from parsed docstring, fallback to empty string
@@ -229,45 +252,43 @@ def generate_anthropic_tool_schema(func: Callable[..., Any], description: str | 
         # --- Required Status & Default ---
         is_optional = False
         if param.default is not inspect.Parameter.empty:
-             # Has a default value, so not required by default
-             if param.default is not None: # Append default only if not None
-                 default_str = f"Default: {param.default!r}."
-                 if schema["description"]:
-                     schema["description"] += f" {default_str}"
-                 else:
-                     schema["description"] = default_str
+            # Has a default value, so not required by default
+            if param.default is not None:  # Append default only if not None
+                default_str = f"Default: {param.default!r}."
+                if schema["description"]:
+                    schema["description"] += f" {default_str}"
+                else:
+                    schema["description"] = default_str
         else:
-             # No default value. Check if type hint marks it as Optional
-             origin = getattr(param_type, '__origin__', None)
-             args = getattr(param_type, '__args__', ())
-             if origin is Union and type(None) in args:
-                  is_optional = True # Type hint is Optional[T] or Union[T, None]
-             elif param_type is Any:
-                  # Assume Any could be None, treat as not strictly required unless logic dictates otherwise
-                  is_optional = True # Or base this on project conventions for 'Any'
-             elif param_type is inspect.Parameter.empty:
-                  # No type hint, no default -> Assume required
-                  pass # is_optional remains False
-             # If not Optional or Any without default, it's required
-             if not is_optional:
-                  required_params.append(name)
-
+            # No default value. Check if type hint marks it as Optional
+            origin = getattr(param_type, "__origin__", None)
+            args = getattr(param_type, "__args__", ())
+            if origin is Union and type(None) in args:
+                is_optional = True  # Type hint is Optional[T] or Union[T, None]
+            elif param_type is Any:
+                # Assume Any could be None, treat as not strictly required unless logic dictates otherwise
+                is_optional = True  # Or base this on project conventions for 'Any'
+            elif param_type is inspect.Parameter.empty:
+                # No type hint, no default -> Assume required
+                pass  # is_optional remains False
+            # If not Optional or Any without default, it's required
+            if not is_optional:
+                required_params.append(name)
 
         properties[name] = schema
 
     tool_schema = {
         "name": func.__name__,
-        "description": final_description, # Use the determined description
+        "description": final_description,  # Use the determined description
         "input_schema": {
             "type": "object",
             "properties": properties,
-        }
+        },
     }
     # Only add 'required' key if there are required parameters
     if required_params:
-         # Ensure uniqueness and sort for consistency
-         tool_schema["input_schema"]["required"] = sorted(list(set(required_params)))
-
+        # Ensure uniqueness and sort for consistency
+        tool_schema["input_schema"]["required"] = sorted(list(set(required_params)))
 
     return tool_schema
 
@@ -276,7 +297,7 @@ def get_retry_session(
     retries: int = 3,
     backoff_factor: float = 1.0,
     status_forcelist: Tuple[int, ...] = (429, 500, 502, 503, 504),
-    allowed_methods: Tuple[str, ...] = ("POST", "GET")
+    allowed_methods: Tuple[str, ...] = ("POST", "GET"),
 ) -> requests.Session:
     """Get a requests session with retry capabilities.
 
@@ -304,16 +325,14 @@ def get_retry_session(
 
 
 async def save_result_to_sandbox_if_requested(
-    result: Union[str, Dict[str, Any]],
-    save_filename: Optional[str] = None,
-    logger = None
+    result: Union[str, Dict[str, Any]], save_filename: Optional[str] = None, logger=None
 ) -> None:
     """
     Save result data to sandbox if a filename is provided and sandbox is available.
-    
+
     This is a shared utility function that handles the common pattern of saving
     query results to the sandbox environment.
-    
+
     Args:
         result: The data to save (either JSON string or dict)
         save_filename: Optional filename to save to. If None or empty, no save is performed.
@@ -321,30 +340,32 @@ async def save_result_to_sandbox_if_requested(
     """
     if not save_filename:
         return
-    
+
     try:
         # Check if sandbox is available
-        from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import check_sandbox_availability
+        from wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code import (
+            check_sandbox_availability,
+        )
+
         available, _, _ = check_sandbox_availability()
-        
+
         if not available:
             if logger:
                 logger.debug("No sandbox available for saving results")
             return
-        
+
         # Import the write function
-        from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_file_utils import write_json_to_sandbox
-        
-        # Schedule the write operation
-        import asyncio
-        await write_json_to_sandbox(
-            json_data=result,
-            filename=save_filename
+        from wandb_mcp_server.mcp_tools.code_sandbox.sandbox_file_utils import (
+            write_json_to_sandbox,
         )
-        
+
+        # Schedule the write operation
+
+        await write_json_to_sandbox(json_data=result, filename=save_filename)
+
         if logger:
             logger.info(f"Scheduled write of results to {save_filename} in sandbox")
-            
+
     except Exception as e:
         if logger:
             logger.error(f"Error saving results to sandbox: {e}", exc_info=True)

@@ -28,6 +28,7 @@ str
     newer to the user's question
 """
 
+
 def query_wandbot_api(question: str) -> Dict[str, Any]:
     wandbot_base_url = os.getenv("WANDBOT_BASE_URL", "https://wandbot.replit.app")
     QUERY_ENDPOINT = f"{wandbot_base_url}/chat/query"
@@ -93,7 +94,11 @@ def query_wandbot_api(question: str) -> Dict[str, Any]:
                     }
 
                 # Ensure sources is a list
-                sources = result["sources"] if isinstance(result["sources"], list) else [result["sources"]]
+                sources = (
+                    result["sources"]
+                    if isinstance(result["sources"], list)
+                    else [result["sources"]]
+                )
                 return {"answer": result["answer"], "sources": sources}
 
             except requests.Timeout:
@@ -122,5 +127,3 @@ def query_wandbot_api(question: str) -> Dict[str, Any]:
             "answer": f"Error connecting to support bot: {str(e)}",
             "sources": [],
         }
-
-

@@ -260,7 +260,9 @@ def count_traces(
 
     # Build the query expression from remaining complex filters
     if complex_filters_for_query_expr:
-        query_expr_obj = QueryBuilder.build_query_expression(complex_filters_for_query_expr)
+        query_expr_obj = QueryBuilder.build_query_expression(
+            complex_filters_for_query_expr
+        )
         if query_expr_obj:
             dumped_query = query_expr_obj.model_dump(by_alias=True, exclude_none=True)
             if dumped_query and dumped_query.get("$expr"):

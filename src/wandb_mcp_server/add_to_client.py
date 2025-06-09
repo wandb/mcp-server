@@ -17,52 +17,52 @@ logger = get_rich_logger(__name__)
 @dataclass
 class AddToClientArgs:
     """Add Weights & Biases MCP server to your client config."""
-    
+
     config_path: str
     """Path to the MCP client config file"""
-    
+
     wandb_api_key: Optional[str] = None
     """W&B API key for authentication"""
-    
+
     e2b_api_key: Optional[str] = None
     """E2B API key for cloud sandbox execution"""
-    
+
     disable_code_sandbox: Optional[str] = None
     """Set to any value to disable code sandbox (e.g., '1' or 'true')"""
-    
+
     write_env_vars: List[str] = field(default_factory=list)
     """Write additional environment variables to client config file (format: KEY=VALUE)"""
-    
+
     def get_env_vars(self) -> Dict[str, str]:
         """Get all environment variables to include in the config."""
         env_vars = {}
-        
+
         # Parse additional env vars from list
         for env_str in self.write_env_vars:
-            if '=' in env_str:
-                key, value = env_str.split('=', 1)
+            if "=" in env_str:
+                key, value = env_str.split("=", 1)
                 env_vars[key] = value
-        
+
         # Add specific environment variables if provided
         if self.wandb_api_key:
             env_vars["WANDB_API_KEY"] = self.wandb_api_key
-            
+
         if self.e2b_api_key:
             env_vars["E2B_API_KEY"] = self.e2b_api_key
-        
+
         if self.disable_code_sandbox:
             env_vars["DISABLE_CODE_SANDBOX"] = self.disable_code_sandbox
-            
+
         return env_vars
 
 
 def get_new_config(env_vars: Optional[Dict[str, str]] = None) -> dict:
     """
     Get the new configuration to add to the client config.
-    
+
     Args:
         env_vars: Optional environment variables to include in the config
-        
+
     Returns:
         Dictionary with the MCP server configuration
     """
@@ -78,11 +78,11 @@ def get_new_config(env_vars: Optional[Dict[str, str]] = None) -> dict:
             }
         }
     }
-    
+
     # Add environment variables if provided
     if env_vars:
         config["mcpServers"]["wandb"]["env"] = env_vars
-    
+
     return config
 
 
@@ -135,9 +135,7 @@ def add_to_client(args: AddToClientArgs) -> None:
         sys.exit(f"Fatal error reading config file: {e}")  # Exit if we can't read
 
     if not isinstance(config.get("mcpServers"), dict):
-        if os.path.exists(
-            config_path
-        ):
+        if os.path.exists(config_path):
             logger.warning(
                 f"Warning: 'mcpServers' key in the loaded config from {config_path} was missing or not a dictionary. Initializing it."
             )
@@ -146,7 +144,7 @@ def add_to_client(args: AddToClientArgs) -> None:
     # Get the new configuration with environment variables
     env_vars = args.get_env_vars()
     new_config = get_new_config(env_vars)
-    
+
     # Check for key overlaps
     existing_keys = set(config["mcpServers"].keys())
     new_keys = set(new_config["mcpServers"].keys())

@@ -525,7 +525,6 @@ use the tool again with additional filters or pagination to get a more complete 
 """
 
 
-
 def find_paginated_collections(
     obj: Dict, current_path: Optional[List[str]] = None
 ) -> List[List[str]]:
