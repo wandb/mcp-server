@@ -147,7 +147,7 @@ class E2BSandbox:
         
         try:
             # Write code to a temporary file in the sandbox to avoid shell escaping issues
-            file_path = "/tmp/code_to_execute.py"
+            file_path = "/home/user/code_to_execute.py"
             
             # Write the code to file
             await self.sandbox.files.write(file_path, code)
