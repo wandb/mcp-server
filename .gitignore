@@ -12,6 +12,7 @@ __pycache__/
 wandb/*
 
 # Distribution / packaging
+.ruff_cache/
 .Python
 build/
 develop-eggs/
