@@ -38,7 +38,7 @@ class RateLimiter:
         self.window_seconds = window_seconds
         self.requests: List[float] = []
         self._lock = asyncio.Lock()
-        logger.info(f"Rate limiter configured: {max_requests} requests per {window_seconds} seconds")
+        logger.debug(f"Rate limiter configured: {max_requests} requests per {window_seconds} seconds")
     
     async def check_rate_limit(self) -> bool:
         """Check if request is within rate limit."""
