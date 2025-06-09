@@ -77,6 +77,8 @@ class TestPyodideIntegration:
         assert result["error"] is None
         assert isinstance(result["output"], str)
         assert isinstance(result["logs"], list)
+        # IMPORTANT: Check that output was actually captured
+        assert "Hello from Pyodide!" in result["output"]
 
     @pytest.mark.asyncio
     async def test_pyodide_math_operations(self):
@@ -273,6 +275,8 @@ class TestE2BIntegration:
             assert result["error"] is None
             assert isinstance(result["output"], str)
             assert isinstance(result["logs"], list)
+            # IMPORTANT: Check that output was actually captured
+            assert "Hello from E2B!" in result["output"]
 
         finally:
             await sandbox.close_sandbox()
@@ -449,6 +453,145 @@ for i in range(100):
             assert result["success"] is True, (
                 f"Rapid execution {i + 1} failed: {result.get('error')}"
             )
+
+
+@pytest.mark.integration
+class TestOutputCapture:
+    """Comprehensive tests for stdout/stderr capture in all sandboxes."""
+
+    @pytest.mark.asyncio
+    async def test_stdout_capture_all_sandboxes(self):
+        """Test that stdout is properly captured in all available sandboxes."""
+        available, types, _ = check_sandbox_availability()
+        
+        if not available:
+            pytest.skip("No sandboxes available")
+        
+        # Test code that should produce output
+        test_code = """print('Hello from sandbox!')"""
+        
+        for sandbox_type in types:
+            result = await execute_sandbox_code(test_code, sandbox_type=sandbox_type)
+            
+            assert result["success"] is True, f"{sandbox_type} execution failed: {result.get('error')}"
+            assert result["output"] is not None, f"{sandbox_type} output is None"
+            assert "Hello from sandbox!" in result["output"], (
+                f"{sandbox_type} failed to capture stdout. Got: {repr(result['output'])}"
+            )
+            print(f"✓ {sandbox_type} stdout capture working")
+
+    @pytest.mark.asyncio
+    async def test_multiple_prints_capture(self):
+        """Test capturing multiple print statements."""
+        available, types, _ = check_sandbox_availability()
+        
+        if not available:
+            pytest.skip("No sandboxes available")
+        
+        test_code = """
+print('First line')
+print('Second line')
+print('Third line')
+"""
+        
+        for sandbox_type in types:
+            result = await execute_sandbox_code(test_code, sandbox_type=sandbox_type)
+            
+            assert result["success"] is True
+            assert "First line" in result["output"]
+            assert "Second line" in result["output"]
+            assert "Third line" in result["output"]
+            # Check ordering
+            assert result["output"].index("First") < result["output"].index("Second")
+            assert result["output"].index("Second") < result["output"].index("Third")
+
+    @pytest.mark.asyncio
+    async def test_print_with_no_newline(self):
+        """Test print with end='' parameter."""
+        available, types, _ = check_sandbox_availability()
+        
+        if not available:
+            pytest.skip("No sandboxes available")
+        
+        test_code = """
+print('Hello', end='')
+print(' World', end='')
+print('!')
+"""
+        
+        for sandbox_type in types:
+            result = await execute_sandbox_code(test_code, sandbox_type=sandbox_type)
+            
+            assert result["success"] is True
+            assert "Hello World!" in result["output"]
+
+    @pytest.mark.asyncio
+    async def test_stderr_capture(self):
+        """Test that stderr is properly captured."""
+        available, types, _ = check_sandbox_availability()
+        
+        if not available:
+            pytest.skip("No sandboxes available")
+        
+        test_code = """
+import sys
+print('This goes to stdout')
+print('This goes to stderr', file=sys.stderr)
+"""
+        
+        for sandbox_type in types:
+            result = await execute_sandbox_code(test_code, sandbox_type=sandbox_type)
+            
+            assert result["success"] is True
+            # stdout should be in output
+            assert "This goes to stdout" in result["output"]
+            # stderr might be in logs or output depending on implementation
+            stderr_found = (
+                "This goes to stderr" in result["output"] or 
+                any("This goes to stderr" in log for log in result.get("logs", []))
+            )
+            assert stderr_found, f"{sandbox_type} failed to capture stderr"
+
+    @pytest.mark.asyncio
+    async def test_return_value_vs_print(self):
+        """Test that both return values and print output are captured."""
+        available, types, _ = check_sandbox_availability()
+        
+        if not available:
+            pytest.skip("No sandboxes available")
+        
+        test_code = """
+print('Printed output')
+'Return value'
+"""
+        
+        for sandbox_type in types:
+            result = await execute_sandbox_code(test_code, sandbox_type=sandbox_type)
+            
+            assert result["success"] is True
+            assert "Printed output" in result["output"]
+            # Return value might also appear in output
+            # This behavior can vary by sandbox
+
+    @pytest.mark.asyncio
+    async def test_unicode_output(self):
+        """Test that unicode output is properly handled."""
+        available, types, _ = check_sandbox_availability()
+        
+        if not available:
+            pytest.skip("No sandboxes available")
+        
+        test_code = """
+print('Hello 世界! 🌍')
+print('Emoji test: 🐍 🚀 ✨')
+"""
+        
+        for sandbox_type in types:
+            result = await execute_sandbox_code(test_code, sandbox_type=sandbox_type)
+            
+            assert result["success"] is True
+            assert "Hello 世界!" in result["output"]
+            assert "🐍" in result["output"]
 
 
 if __name__ == "__main__":
