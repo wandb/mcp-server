@@ -431,16 +431,20 @@ class PyodideSandbox:
             # Run a temporary Deno process just to download Pyodide
             # This process will exit after downloading
             download_script = """
-import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.mjs";
+// Use the same npm package as the main script
+import { loadPyodide } from "npm:pyodide@0.26.4";
 
 console.error("Downloading Pyodide and packages...");
-const pyodide = await loadPyodide({
-    indexURL: "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/",
-});
+try {
+    const pyodide = await loadPyodide();
 
-// Pre-load common packages
-await pyodide.loadPackage(["numpy", "pandas", "matplotlib"]);
-console.error("Pyodide packages downloaded successfully");
+    // Pre-load common packages
+    await pyodide.loadPackage(["numpy", "pandas", "matplotlib"]);
+    console.error("Pyodide packages downloaded successfully");
+} catch (error) {
+    console.error("Error downloading Pyodide:", error.message);
+    Deno.exit(1);
+}
 Deno.exit(0);
 """
 
