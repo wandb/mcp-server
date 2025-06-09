@@ -77,6 +77,27 @@ class PyodideSandbox:
             return False
     
     @classmethod
+    def _is_process_alive(cls) -> bool:
+        """Check if the shared process is alive and responsive."""
+        if cls._shared_process is None:
+            return False
+        
+        # Check if process has terminated
+        if cls._shared_process.returncode is not None:
+            return False
+        
+        # Check if stdin/stdout are still open
+        try:
+            if cls._shared_process.stdin.is_closing():
+                return False
+            if cls._shared_process.stdout.at_eof():
+                return False
+        except Exception:
+            return False
+        
+        return True
+    
+    @classmethod
     async def get_or_create_process(cls, script_path: Path):
         """Get or create the shared Pyodide process."""
         async with cls._process_lock:
@@ -84,7 +105,24 @@ class PyodideSandbox:
             if cls._initialization_error:
                 raise cls._initialization_error
             
-            if cls._shared_process is None or cls._shared_process.returncode is not None:
+            # Check if we need to create a new process
+            if not cls._is_process_alive():
+                # Clean up old process if it exists
+                if cls._shared_process is not None:
+                    try:
+                        if cls._shared_process.returncode is None:
+                            cls._shared_process.terminate()
+                            try:
+                                await asyncio.wait_for(cls._shared_process.wait(), timeout=2.0)
+                            except asyncio.TimeoutError:
+                                cls._shared_process.kill()
+                                await cls._shared_process.wait()
+                    except Exception as e:
+                        logger.debug(f"Error cleaning up old process: {e}")
+                    finally:
+                        cls._shared_process = None
+                        cls._initialized = False
+                
                 logger.info("Starting persistent Pyodide sandbox process")
                 try:
                     cls._shared_process = await asyncio.create_subprocess_exec(
@@ -141,15 +179,174 @@ class PyodideSandbox:
             return
             
         while True:
-            line = await cls._shared_process.stderr.readline()
-            if not line:
+            try:
+                line = await asyncio.wait_for(cls._shared_process.stderr.readline(), timeout=30)
+                if not line:
+                    break
+                line_str = line.decode('utf-8').strip()
+                logger.debug(f"Pyodide init: {line_str}")
+                if "Pyodide sandbox server ready" in line_str:
+                    break
+                elif "Initializing Pyodide..." in line_str:
+                    logger.info("Downloading and initializing Pyodide (this may take a minute on first run)...")
+            except asyncio.TimeoutError:
+                logger.warning("Timeout reading initialization message from Pyodide process")
                 break
-            line_str = line.decode('utf-8').strip()
-            logger.debug(f"Pyodide init: {line_str}")
-            if "Pyodide sandbox server ready" in line_str:
+            except Exception as e:
+                logger.warning(f"Error reading initialization message: {e}")
                 break
-            elif "Initializing Pyodide..." in line_str:
-                logger.info("Downloading and initializing Pyodide (this may take a minute on first run)...")
+    
+    async def _send_request_and_get_response(self, request: Dict[str, Any], timeout: int) -> Dict[str, Any]:
+        """Send a request to the Pyodide process and get the response with proper error handling."""
+        max_retries = 2
+        
+        for attempt in range(max_retries):
+            try:
+                # Get or create the persistent process
+                process = await self.get_or_create_process(self._pyodide_script_path)
+                
+                # Verify process is still alive before sending request
+                if not self._is_process_alive():
+                    if attempt < max_retries - 1:
+                        logger.warning("Process died before sending request, retrying...")
+                        # Force recreation on next attempt
+                        async with self._process_lock:
+                            self._shared_process = None
+                        continue
+                    else:
+                        raise SandboxError("Pyodide process is not responsive")
+                
+                # Send request as a single line JSON
+                request_json = json.dumps(request) + '\n'
+                process.stdin.write(request_json.encode())
+                await process.stdin.drain()
+                
+                # Read response with timeout - may need to read multiple lines to get JSON
+                response_line = None
+                max_read_attempts = 10  # Prevent infinite loop
+                read_attempts = 0
+                
+                try:
+                    while read_attempts < max_read_attempts:
+                        line = await asyncio.wait_for(
+                            process.stdout.readline(),
+                            timeout=timeout + 5  # Give extra time for process overhead
+                        )
+                        
+                        if not line:
+                            break
+                            
+                        line_text = line.decode('utf-8').strip()
+                        
+                        # Skip empty lines
+                        if not line_text:
+                            read_attempts += 1
+                            continue
+                            
+                        # Check if this looks like a JSON response (starts with { or [)
+                        if line_text.startswith('{') or line_text.startswith('['):
+                            response_line = line
+                            break
+                        else:
+                            # This is likely a package loading message or other output - skip it
+                            read_attempts += 1
+                            continue
+                            
+                except asyncio.TimeoutError:
+                    logger.warning(f"Timeout waiting for response from Pyodide after {timeout + 5} seconds")
+                    # Don't kill the process on timeout, just return error
+                    return {
+                        "success": False,
+                        "output": "",
+                        "error": f"Execution timed out after {timeout} seconds",
+                        "logs": [],
+                    }
+                
+                # Parse the response
+                if response_line:
+                    try:
+                        response_text = response_line.decode('utf-8').strip()
+                        if not response_text:
+                            logger.warning("Received empty response from Pyodide")
+                            if attempt < max_retries - 1:
+                                async with self._process_lock:
+                                    self._shared_process = None
+                                continue
+                            else:
+                                return {
+                                    "success": False,
+                                    "output": "",
+                                    "error": "Received empty response from Pyodide",
+                                    "logs": [],
+                                }
+                        result = json.loads(response_text)
+                        return result
+                    except json.JSONDecodeError as e:
+                        if attempt < max_retries - 1:
+                            logger.warning(f"Failed to parse response, retrying: {e}")
+                            logger.warning(f"Raw response was: {repr(response_line.decode('utf-8', errors='replace'))}")
+                            # Force recreation on next attempt
+                            async with self._process_lock:
+                                self._shared_process = None
+                            continue
+                        else:
+                            return {
+                                "success": False,
+                                "output": "",
+                                "error": f"Failed to parse response: {e}",
+                                "logs": [],
+                            }
+                else:
+                    if attempt < max_retries - 1:
+                        logger.warning("No response from Pyodide process, retrying...")
+                        # Force recreation on next attempt
+                        async with self._process_lock:
+                            self._shared_process = None
+                        continue
+                    else:
+                        return {
+                            "success": False,
+                            "output": "",
+                            "error": "No response from Pyodide process",
+                            "logs": [],
+                        }
+                        
+            except (BrokenPipeError, ConnectionResetError, OSError) as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Communication error with Pyodide process, retrying: {e}")
+                    # Force recreation on next attempt
+                    async with self._process_lock:
+                        self._shared_process = None
+                    continue
+                else:
+                    return {
+                        "success": False,
+                        "output": "",
+                        "error": f"Connection lost to Pyodide process: {str(e)}",
+                        "logs": [],
+                    }
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Unexpected error communicating with Pyodide process, retrying: {e}")
+                    # Force recreation on next attempt
+                    async with self._process_lock:
+                        self._shared_process = None
+                    continue
+                else:
+                    return {
+                        "success": False,
+                        "output": "",
+                        "error": f"Pyodide execution failed: {str(e)}",
+                        "logs": [],
+                    }
+        
+        # Should never reach here, but just in case
+        return {
+            "success": False,
+            "output": "",
+            "error": "Maximum retries exceeded",
+            "logs": [],
+        }
     
     async def execute_code(self, code: str, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Dict[str, Any]:
         """Execute Python code using our persistent Pyodide process."""
@@ -168,67 +365,14 @@ class PyodideSandbox:
         if not self._pyodide_script_path.exists():
             raise SandboxError(f"Pyodide script not found at {self._pyodide_script_path}")
         
-        try:
-            # Get or create the persistent process
-            process = await self.get_or_create_process(self._pyodide_script_path)
-            
-            # Create execution request
-            request = {
-                "type": "execute",
-                "code": code,
-                "timeout": timeout
-            }
-            
-            # Send request as a single line JSON
-            request_json = json.dumps(request) + '\n'
-            process.stdin.write(request_json.encode())
-            await process.stdin.drain()
-            
-            # Read response with timeout
-            try:
-                response_line = await asyncio.wait_for(
-                    process.stdout.readline(),
-                    timeout=timeout + 5  # Give extra time for process overhead
-                )
-            except asyncio.TimeoutError:
-                # Don't kill the process on timeout, just return error
-                return {
-                    "success": False,
-                    "output": "",
-                    "error": f"Execution timed out after {timeout} seconds",
-                    "logs": [],
-                }
-            
-            # Parse the response
-            try:
-                if response_line:
-                    result = json.loads(response_line.decode('utf-8'))
-                    return result
-                else:
-                    return {
-                        "success": False,
-                        "output": "",
-                        "error": "No response from Pyodide process",
-                        "logs": [],
-                    }
-                    
-            except json.JSONDecodeError as e:
-                return {
-                    "success": False,
-                    "output": "",
-                    "error": f"Failed to parse response: {e}",
-                    "logs": [],
-                }
-            
-        except SandboxError:
-            raise
-        except Exception as e:
-            return {
-                "success": False,
-                "output": "",
-                "error": f"Pyodide execution failed: {str(e)}",
-                "logs": [],
-            }
+        # Create execution request
+        request = {
+            "type": "execute",
+            "code": code,
+            "timeout": timeout
+        }
+        
+        return await self._send_request_and_get_response(request, timeout)
     
     async def writeFile(self, path: str, content: str) -> None:
         """Write a file to the Pyodide sandbox using persistent process."""
@@ -238,43 +382,17 @@ class PyodideSandbox:
                 "Install Deno with: curl -fsSL https://deno.land/install.sh | sh"
             )
         
-        try:
-            # Get or create the persistent process
-            process = await self.get_or_create_process(self._pyodide_script_path)
-            
-            # Create file write request
-            request = {
-                "type": "writeFile",
-                "path": path,
-                "content": content
-            }
-            
-            # Send request as a single line JSON
-            request_json = json.dumps(request) + '\n'
-            process.stdin.write(request_json.encode())
-            await process.stdin.drain()
-            
-            # Read response with timeout
-            try:
-                response_line = await asyncio.wait_for(
-                    process.stdout.readline(),
-                    timeout=10
-                )
-            except asyncio.TimeoutError:
-                raise SandboxError(f"Timeout writing file to {path}")
-            
-            # Parse the response
-            if response_line:
-                result = json.loads(response_line.decode('utf-8'))
-                if not result.get("success", False):
-                    raise SandboxError(f"Failed to write file: {result.get('error', 'Unknown error')}")
-            else:
-                raise SandboxError("No response from Pyodide process")
-                
-        except Exception as e:
-            if isinstance(e, SandboxError):
-                raise
-            raise SandboxError(f"Failed to write file to Pyodide: {str(e)}")
+        # Create file write request
+        request = {
+            "type": "writeFile",
+            "path": path,
+            "content": content
+        }
+        
+        result = await self._send_request_and_get_response(request, 10)
+        
+        if not result.get("success", False):
+            raise SandboxError(f"Failed to write file: {result.get('error', 'Unknown error')}")
     
     @classmethod
     async def initialize_early(cls):
@@ -297,10 +415,14 @@ class PyodideSandbox:
                 return True
             else:
                 logger.warning(f"Pyodide initialization completed with error: {result.get('error')}")
+                # Clear the initialization error so it can be retried later
+                cls._initialization_error = None
                 return False
                 
         except Exception as e:
             logger.warning(f"Failed to initialize Pyodide early: {e}")
+            # Clear the initialization error so it can be retried later
+            cls._initialization_error = None
             return False
     
     @classmethod

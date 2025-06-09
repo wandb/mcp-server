@@ -1,5 +1,3 @@
-/// <reference types="https://deno.land/x/deno/cli/build/main.d.ts" />
-
 #!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env
 
 /**
@@ -42,14 +40,17 @@ class PyodideSandbox {
       console.error("Initializing Pyodide...");
       this.pyodide = await loadPyodide({
         stdout: (text: string) => {
-          // Will be captured by our execute method
+          // Redirect to stderr during initialization to avoid interfering with JSON responses
+          console.error(`Pyodide stdout: ${text}`);
         },
         stderr: (text: string) => {
-          // Will be captured by our execute method
+          // Redirect to stderr during initialization
+          console.error(`Pyodide stderr: ${text}`);
         },
       });
 
-      // Load commonly used packages
+      // Load commonly used packages - output will go to stderr
+      console.error("Loading packages: numpy, pandas, matplotlib...");
       await this.pyodide.loadPackage(["numpy", "pandas", "matplotlib"]);
       
       this.initialized = true;
@@ -198,10 +199,13 @@ if (import.meta.main) {
   while (true) {
     try {
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done) {
+        console.error("Stdin closed, exiting...");
+        break;
+      }
       
       if (value) {
-        const lines = decoder.decode(value).trim().split('\\n');
+        const lines = decoder.decode(value).trim().split('\n');
         for (const line of lines) {
           if (!line) continue;
           
@@ -232,12 +236,31 @@ if (import.meta.main) {
             } else {
               // Default to code execution (backward compatibility)
               if (!request.code) {
-                throw new Error("No code provided for execution");
+                const errorResult: ExecutionResult = {
+                  success: false,
+                  output: "",
+                  error: "No code provided for execution",
+                  logs: [],
+                };
+                console.log(JSON.stringify(errorResult));
+                continue;
               }
-              const result = await globalSandbox.execute(request);
-              console.log(JSON.stringify(result));
+              
+              try {
+                const result = await globalSandbox.execute(request);
+                console.log(JSON.stringify(result));
+              } catch (error) {
+                const errorResult: ExecutionResult = {
+                  success: false,
+                  output: "",
+                  error: `Execution failed: ${error}`,
+                  logs: [],
+                };
+                console.log(JSON.stringify(errorResult));
+              }
             }
           } catch (error) {
+            // JSON parsing or other request processing errors
             const errorResult: ExecutionResult = {
               success: false,
               output: "",
@@ -249,10 +272,35 @@ if (import.meta.main) {
         }
       }
     } catch (error) {
+      // Log the error but don't break the loop unless it's a critical error
       console.error(`Server error: ${error}`);
-      break;
+      
+      // Only break on critical errors that indicate the process should exit
+      if (error instanceof Deno.errors.BrokenPipe || 
+          error instanceof Deno.errors.ConnectionReset ||
+          error.name === "BadResource") {
+        console.error("Critical error detected, exiting...");
+        break;
+      }
+      
+      // For other errors, send an error response and continue
+      try {
+        const errorResult: ExecutionResult = {
+          success: false,
+          output: "",
+          error: `Server error: ${error}`,
+          logs: [],
+        };
+        console.log(JSON.stringify(errorResult));
+      } catch (outputError) {
+        console.error(`Failed to send error response: ${outputError}`);
+        // If we can't even send an error response, the connection is likely broken
+        break;
+      }
     }
   }
+  
+  console.error("Pyodide sandbox server shutting down");
 }
 
 export { PyodideSandbox, type ExecutionRequest, type ExecutionResult };

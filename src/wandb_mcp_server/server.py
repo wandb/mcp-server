@@ -317,7 +317,11 @@ def cli():
                 try:
                     from wandb_mcp_server.mcp_tools.code_sandbox import PyodideSandbox
                     # This will initialize Pyodide and download packages
-                    await PyodideSandbox.initialize_early()
+                    success = await PyodideSandbox.initialize_early()
+                    if success:
+                        logger.info("Pyodide sandbox pre-initialization completed successfully")
+                    else:
+                        logger.warning("Pyodide sandbox pre-initialization completed with warnings")
                 except Exception as e:
                     logger.warning(f"Failed to pre-initialize Pyodide sandbox: {e}")
             
