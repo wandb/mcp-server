@@ -466,7 +466,7 @@ Deno.exit(0);
             try:
                 # Run the download script synchronously
                 result = subprocess.run(
-                    ["deno", "run", "--allow-net" "--allow-read", temp_script_path],
+                    ["deno", "run", "--allow-net", "--allow-read", temp_script_path],
                     capture_output=True,
                     text=True,
                     timeout=120,  # 2 minute timeout for download
