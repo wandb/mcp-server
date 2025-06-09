@@ -55,6 +55,10 @@ from collections import defaultdict
 from datetime import datetime
 
 import pytest
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Attempt to disable Weave tracing in worker processes by default.
 os.environ["WEAVE_DISABLED"] = "true"
