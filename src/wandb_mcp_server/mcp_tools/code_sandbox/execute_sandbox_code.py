@@ -26,7 +26,7 @@ logger = get_rich_logger(__name__)
 def check_sandbox_availability() -> tuple[bool, List[str], str]:
     """
     Check if any sandbox is available for code execution.
-    
+
     Returns:
         tuple containing:
             - is_available (bool): Whether any sandbox is available
@@ -36,29 +36,26 @@ def check_sandbox_availability() -> tuple[bool, List[str], str]:
     # Check if sandbox is disabled
     if os.getenv("DISABLE_CODE_SANDBOX"):
         return (
-            False, 
-            [], 
+            False,
+            [],
             "Code sandbox is disabled via DISABLE_CODE_SANDBOX environment variable. "
-            "Remove this variable to enable sandbox functionality."
+            "Remove this variable to enable sandbox functionality.",
         )
-    
+
     available_types = []
     reasons = []
-    
+
     # Check E2B availability
     if os.getenv("E2B_API_KEY"):
         available_types.append("e2b")
         reasons.append("E2B cloud sandbox available (API key found)")
     else:
         reasons.append("E2B not available (E2B_API_KEY not set)")
-    
+
     # Check Pyodide/Deno availability
     try:
         result = subprocess.run(
-            ["deno", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5
+            ["deno", "--version"], capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
             available_types.append("pyodide")
@@ -74,10 +71,10 @@ def check_sandbox_availability() -> tuple[bool, List[str], str]:
         reasons.append("Pyodide not available (Deno check timed out)")
     except Exception as e:
         reasons.append(f"Pyodide not available (Error checking Deno: {str(e)})")
-    
+
     # Determine overall availability
     is_available = len(available_types) > 0
-    
+
     # Construct reason message
     if is_available:
         reason = f"Sandbox available. {' '.join(reasons)}"
@@ -89,7 +86,7 @@ def check_sandbox_availability() -> tuple[bool, List[str], str]:
         )
         if not is_available:
             reason = f"No sandboxes available. {' '.join(reasons)}"
-    
+
     return (is_available, available_types, reason)
 
 
@@ -174,11 +171,11 @@ async def execute_sandbox_code(
 ) -> Dict[str, Any]:
     """
     Execute Python code in a secure sandbox environment.
-    
+
     Automatically selects the best available sandbox or uses the specified type.
     """
     start_time = time.time()
-    
+
     # Check rate limit
     if not await _rate_limiter.check_rate_limit():
         return {
@@ -188,7 +185,7 @@ async def execute_sandbox_code(
             "logs": [],
             "sandbox_used": "none",
         }
-    
+
     # Validate timeout
     try:
         timeout = validate_timeout(timeout)
@@ -200,7 +197,7 @@ async def execute_sandbox_code(
             "logs": [],
             "sandbox_used": "none",
         }
-    
+
     # Validate sandbox type if specified
     valid_sandbox_types = ["e2b", "pyodide", "auto", None]
     if sandbox_type and sandbox_type not in valid_sandbox_types:
@@ -211,26 +208,32 @@ async def execute_sandbox_code(
             "logs": [],
             "sandbox_used": "none",
         }
-    
+
     # Normalize "auto" to None for auto-selection
     if sandbox_type == "auto":
         sandbox_type = None
-    
+
     # Pre-validate packages for E2B if specified
-    if install_packages and (sandbox_type == "e2b" or (sandbox_type is None and os.getenv("E2B_API_KEY"))):
+    if install_packages and (
+        sandbox_type == "e2b" or (sandbox_type is None and os.getenv("E2B_API_KEY"))
+    ):
         # Pre-flight validation
         api_key = os.getenv("E2B_API_KEY")
         if api_key:
             sandbox = E2BSandbox(api_key)
-            valid_packages, denied_packages, invalid_packages = sandbox.pre_validate_packages(install_packages)
-            
+            valid_packages, denied_packages, invalid_packages = (
+                sandbox.pre_validate_packages(install_packages)
+            )
+
             if denied_packages or invalid_packages:
                 error_parts = []
                 if denied_packages:
                     error_parts.append(f"Denied packages: {', '.join(denied_packages)}")
                 if invalid_packages:
-                    error_parts.append(f"Invalid packages: {', '.join(invalid_packages)}")
-                
+                    error_parts.append(
+                        f"Invalid packages: {', '.join(invalid_packages)}"
+                    )
+
                 if not valid_packages:
                     return {
                         "success": False,
@@ -239,10 +242,10 @@ async def execute_sandbox_code(
                         "logs": [],
                         "sandbox_used": "none",
                     }
-    
+
     # Determine which sandbox to use
     sandboxes_to_try = []
-    
+
     if sandbox_type:
         # User specified a sandbox type
         if sandbox_type == "e2b":
@@ -262,18 +265,17 @@ async def execute_sandbox_code(
                 # Add execution time to cached result
                 cached_result["execution_time_ms"] = 0  # Cached, so no execution time
                 return cached_result
-        
+
         # Try E2B first if available
         api_key = os.getenv("E2B_API_KEY")
         if api_key is not None:
             sandboxes_to_try.append(("e2b", E2BSandbox(api_key)))
-        
+
         # Then try Pyodide
         pyodide = PyodideSandbox()
         if pyodide.available:
             sandboxes_to_try.append(("pyodide", pyodide))
-        
-    
+
     # Check if we have any sandboxes available
     if not sandboxes_to_try:
         return {
@@ -288,13 +290,13 @@ async def execute_sandbox_code(
             "sandbox_used": "none",
             "execution_time_ms": int((time.time() - start_time) * 1000),
         }
-    
+
     # Try each sandbox in order
     last_error = None
     for sandbox_name, sandbox in sandboxes_to_try:
         try:
             logger.info(f"Attempting to execute code in {sandbox_name} sandbox")
-            
+
             # Execute based on sandbox type
             if sandbox_name == "e2b":
                 result = await sandbox.execute_code(code, timeout, install_packages)
@@ -308,27 +310,27 @@ async def execute_sandbox_code(
                         "Additional packages can be imported if they're pure Python."
                     )
                 result = await sandbox.execute_code(code, timeout)
-            
+
             # Add sandbox info and execution time
             result["sandbox_used"] = sandbox_name
             result["execution_time_ms"] = int((time.time() - start_time) * 1000)
-            
+
             # Optionally include sandbox instance for file operations
             if return_sandbox:
                 result["_sandbox_instance"] = sandbox
                 result["_sandbox_type"] = sandbox_name
-            
+
             # Cache successful results
             if result["success"]:
                 _execution_cache.set(code, sandbox_name, result, install_packages)
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to execute in {sandbox_name} sandbox: {e}")
             last_error = str(e)
             continue
-    
+
     # All sandboxes failed
     return {
         "success": False,
