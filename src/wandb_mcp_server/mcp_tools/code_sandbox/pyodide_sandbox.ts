@@ -74,17 +74,27 @@ class PyodideSandbox {
     };
 
     try {
-      // Set up output capture
+      // Set up output capture BEFORE running any Python code
       const outputLines: string[] = [];
       const errorLines: string[] = [];
       
-      this.pyodide.stdout = (text: string) => {
-        outputLines.push(text);
-      };
-      
-      this.pyodide.stderr = (text: string) => {
-        errorLines.push(text);
-      };
+      // First, set up Python's sys.stdout and sys.stderr to capture output
+      await this.pyodide.runPythonAsync(`
+import sys
+from io import StringIO
+
+# Create StringIO objects to capture output
+_stdout_buffer = StringIO()
+_stderr_buffer = StringIO()
+
+# Save original stdout/stderr
+_original_stdout = sys.stdout
+_original_stderr = sys.stderr
+
+# Redirect stdout/stderr
+sys.stdout = _stdout_buffer
+sys.stderr = _stderr_buffer
+      `);
 
       // Write any input files to the virtual filesystem
       if (request.files) {
@@ -112,13 +122,75 @@ class PyodideSandbox {
 
       try {
         const executionResult = await this.pyodide.runPythonAsync(request.code!);
+        
+        // Capture the output from the StringIO buffers
+        const capturedOutput = await this.pyodide.runPythonAsync(`
+# Get captured output
+_stdout_output = _stdout_buffer.getvalue()
+_stderr_output = _stderr_buffer.getvalue()
+
+# Restore original stdout/stderr
+sys.stdout = _original_stdout
+sys.stderr = _original_stderr
+
+# Clean up
+_stdout_buffer.close()
+_stderr_buffer.close()
+
+# Return the captured output
+(_stdout_output, _stderr_output)
+        `);
+        
+        const [stdoutOutput, stderrOutput] = capturedOutput.toJs();
+        
         result.success = true;
-        result.output = outputLines.join("");
-        if (executionResult !== undefined && executionResult !== null) {
-          if (result.output) result.output += "\\n";
+        result.output = stdoutOutput || "";
+        
+        // Add the return value if it's not None
+        if (executionResult !== undefined && executionResult !== null && executionResult !== this.pyodide.globals.get('None')) {
+          if (result.output && !result.output.endsWith('\n')) {
+            result.output += "\n";
+          }
           result.output += String(executionResult);
         }
+        
+        if (stderrOutput) {
+          result.logs.push(stderrOutput);
+        }
       } catch (error: any) {
+        // Try to capture any output before the error
+        try {
+          const capturedOutput = await this.pyodide.runPythonAsync(`
+# Get captured output even if there was an error
+_stdout_output = _stdout_buffer.getvalue() if '_stdout_buffer' in locals() else ""
+_stderr_output = _stderr_buffer.getvalue() if '_stderr_buffer' in locals() else ""
+
+# Restore original stdout/stderr if they exist
+if '_original_stdout' in locals():
+    sys.stdout = _original_stdout
+if '_original_stderr' in locals():
+    sys.stderr = _original_stderr
+
+# Clean up if buffers exist
+if '_stdout_buffer' in locals():
+    _stdout_buffer.close()
+if '_stderr_buffer' in locals():
+    _stderr_buffer.close()
+
+(_stdout_output, _stderr_output)
+          `);
+          
+          const [stdoutOutput, stderrOutput] = capturedOutput.toJs();
+          if (stdoutOutput) {
+            result.output = stdoutOutput;
+          }
+          if (stderrOutput) {
+            result.logs.push(stderrOutput);
+          }
+        } catch {
+          // Ignore errors in cleanup
+        }
+        
         result.error = error.toString();
         if (error.type === "PythonError") {
           // Format Python traceback nicely
@@ -126,10 +198,6 @@ class PyodideSandbox {
         }
       } finally {
         clearTimeout(timeoutId);
-      }
-
-      if (errorLines.length > 0) {
-        result.logs.push(...errorLines);
       }
 
     } catch (error: any) {
