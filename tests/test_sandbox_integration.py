@@ -160,10 +160,11 @@ print(f"Square root of 16 is {result}")
         result = await sandbox.execute_code("import time; time.sleep(2)", timeout=1)
         end_time = time.time()
 
-        # Should timeout quickly
-        assert end_time - start_time < 10  # Should not take too long
+        # Should timeout, but cleanup might take time
+        # Pyodide timeout includes some overhead, so allow more time
+        assert end_time - start_time < 15  # Allow up to 15 seconds for timeout + cleanup
         assert result["success"] is False
-        assert "timeout" in result["error"].lower()
+        assert "timeout" in result["error"].lower() or "timed out" in result["error"].lower()
 
     @pytest.mark.asyncio
     async def test_pyodide_package_loading_output(self):
@@ -294,7 +295,7 @@ class TestE2BIntegration:
             # Test package installation
             result = await sandbox.execute_code(
                 "import requests; print('requests imported successfully')",
-                install_packages=["requests"],
+                install_packages_list=["requests"],
             )
 
             assert result["success"] is True

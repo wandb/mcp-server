@@ -24,7 +24,7 @@ class PyodideSandbox:
 
     # Class-level persistent process
     _shared_process = None
-    _process_lock = asyncio.Lock()
+    _process_lock = None  # Will be created on first use
     _initialized = False
     _initialization_error = None
     _pre_download_complete = False
@@ -32,6 +32,13 @@ class PyodideSandbox:
     def __init__(self):
         self.available = self._check_deno_available()
         self._pyodide_script_path = Path(__file__).parent / "pyodide_sandbox.ts"
+
+    @classmethod
+    def _get_process_lock(cls):
+        """Get or create the process lock in the current event loop."""
+        if cls._process_lock is None:
+            cls._process_lock = asyncio.Lock()
+        return cls._process_lock
 
     async def __aenter__(self):
         """Context manager entry - ensure process is ready."""
@@ -100,7 +107,7 @@ class PyodideSandbox:
     @classmethod
     async def get_or_create_process(cls, script_path: Path):
         """Get or create the shared Pyodide process."""
-        async with cls._process_lock:
+        async with cls._get_process_lock():
             # Check if we have a cached initialization error
             if cls._initialization_error:
                 raise cls._initialization_error
@@ -225,7 +232,7 @@ class PyodideSandbox:
                             "Process died before sending request, retrying..."
                         )
                         # Force recreation on next attempt
-                        async with self._process_lock:
+                        async with self._get_process_lock():
                             self._shared_process = None
                         continue
                     else:
@@ -286,7 +293,7 @@ class PyodideSandbox:
                         if not response_text:
                             logger.warning("Received empty response from Pyodide")
                             if attempt < max_retries - 1:
-                                async with self._process_lock:
+                                async with self._get_process_lock():
                                     self._shared_process = None
                                 continue
                             else:
@@ -305,7 +312,7 @@ class PyodideSandbox:
                                 f"Raw response was: {repr(response_line.decode('utf-8', errors='replace'))}"
                             )
                             # Force recreation on next attempt
-                            async with self._process_lock:
+                            async with self._get_process_lock():
                                 self._shared_process = None
                             continue
                         else:
@@ -319,7 +326,7 @@ class PyodideSandbox:
                     if attempt < max_retries - 1:
                         logger.warning("No response from Pyodide process, retrying...")
                         # Force recreation on next attempt
-                        async with self._process_lock:
+                        async with self._get_process_lock():
                             self._shared_process = None
                         continue
                     else:
@@ -492,7 +499,7 @@ Deno.exit(0);
     @classmethod
     async def cleanup_shared_process(cls):
         """Explicitly close the shared Pyodide process (for cleanup)."""
-        async with cls._process_lock:
+        async with cls._get_process_lock():
             if cls._shared_process is not None:
                 try:
                     # First try graceful termination
@@ -515,3 +522,4 @@ Deno.exit(0);
                     cls._shared_process = None
                     cls._initialized = False
                     cls._initialization_error = None
+                    cls._process_lock = None  # Reset lock to allow new event loop

@@ -75,8 +75,6 @@ class PyodideSandbox {
 
     try {
       // Set up output capture BEFORE running any Python code
-      const outputLines: string[] = [];
-      const errorLines: string[] = [];
       
       // First, set up Python's sys.stdout and sys.stderr to capture output
       await this.pyodide.runPythonAsync(`

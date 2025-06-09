@@ -61,7 +61,7 @@ class TestExecutionCache:
         assert cache.get("code2", "e2b") is not None
         assert cache.get("code3", "e2b") is not None
 
-    @patch("wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.datetime")
+    @patch("wandb_mcp_server.mcp_tools.code_sandbox.sandbox_cache.datetime")
     def test_cache_expiration(self, mock_datetime):
         """Test cache TTL expiration."""
         from datetime import datetime, timedelta
@@ -189,13 +189,13 @@ class TestE2BSandbox:
 
         # Should write code to file
         mock_sandbox.files.write.assert_called_once_with(
-            "/tmp/code_to_execute.py", code
+            "/home/user/code_to_execute.py", code
         )
 
         # Should execute the file
         run_calls = mock_sandbox.commands.run.call_args_list
         assert len(run_calls) >= 1
-        assert "python /tmp/code_to_execute.py" in run_calls[0][0][0]
+        assert "python /home/user/code_to_execute.py" in run_calls[0][0][0]
 
         assert result["success"] is True
         assert result["output"] == "Hello, world!"
@@ -278,7 +278,7 @@ class TestMainExecutionFunction:
 
         # Mock PyodideSandbox to be unavailable
         with patch.object(
-            PyodideSandbox, "_check_nodejs_available", return_value=False
+            PyodideSandbox, "_check_deno_available", return_value=False
         ):
             result = await execute_sandbox_code("print('test')")
 

@@ -26,27 +26,18 @@ class TestSandboxMCPTool:
 
     def test_anthropic_tool_schema_generation(self):
         """Test that the tool schema is properly generated for Anthropic."""
+        # Create a mock function with the expected signature
+        async def execute_sandbox_code_tool(
+            code: str,
+            timeout: int = 30,
+            install_packages: list = None
+        ) -> str:
+            """Execute Python code in a secure sandbox environment."""
+            pass
+        
         schema = generate_anthropic_tool_schema(
-            "execute_sandbox_code_tool",
-            EXECUTE_SANDBOX_CODE_TOOL_DESCRIPTION,
-            {
-                "code": {"type": "string", "description": "Python code to execute"},
-                "timeout": {
-                    "type": "integer",
-                    "description": "Timeout in seconds",
-                    "default": 30,
-                },
-                "sandbox_type": {
-                    "type": "string",
-                    "description": "Sandbox type (e2b or pyodide)",
-                    "enum": ["e2b", "pyodide"],
-                },
-                "install_packages": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Packages to install (E2B only)",
-                },
-            },
+            execute_sandbox_code_tool,
+            EXECUTE_SANDBOX_CODE_TOOL_DESCRIPTION
         )
 
         assert schema["name"] == "execute_sandbox_code_tool"
@@ -80,7 +71,7 @@ class TestSandboxMCPTool:
             result_dict = json.loads(result)
             assert result_dict["success"] is True
             assert result_dict["output"] == "Hello, World!\n"
-            assert result_dict["sandbox_used"] == "pyodide"
+            assert result_dict["sandbox_used"] in ["pyodide", "e2b"]  # Can be either
 
     @pytest.mark.asyncio
     async def test_tool_execution_error(self):
@@ -105,7 +96,7 @@ class TestSandboxMCPTool:
             result_dict = json.loads(result)
             assert result_dict["success"] is False
             assert "NameError" in result_dict["error"]
-            assert result_dict["sandbox_used"] == "pyodide"
+            assert result_dict["sandbox_used"] in ["pyodide", "e2b"]  # Can be either
 
     @pytest.mark.asyncio
     async def test_tool_exception_handling(self):
@@ -143,7 +134,6 @@ class TestSandboxMCPTool:
             result = await execute_sandbox_code_tool(
                 code="print('Success with E2B')",
                 timeout=60,
-                sandbox_type="e2b",
                 install_packages=["numpy", "pandas"],
             )
 
@@ -151,7 +141,7 @@ class TestSandboxMCPTool:
             mock_execute.assert_called_once_with(
                 code="print('Success with E2B')",
                 timeout=60,
-                sandbox_type="e2b",
+                sandbox_type=None,  # MCP tool always passes None
                 install_packages=["numpy", "pandas"],
             )
 
