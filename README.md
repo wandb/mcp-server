@@ -92,10 +92,7 @@ We provide a helper utility below to easily install the Weights & Biases MCP Ser
 ### Example helper
 
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
-  --config_path <path to the MCP config json file> \
-  --add_deno_path \
-  && uvx wandb login
+uvx --from git+https://github.com/wandb/wandb-mcp-server -- add_to_client --config_path <path to the MCP config json file> --add_deno_path && uvx wandb login
 ```
 
 ### Cursor installation
@@ -103,29 +100,20 @@ uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
 Enable the server for a specific project. Run the following in the root of your project dir:
 
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
-  --config_path cursor/mcp.json \
-  --add_deno_path \
-  && uvx wandb login
+uvx --from git+https://github.com/wandb/wandb-mcp-server -- add_to_client --config_path .cursor/mcp.json --add_deno_path && uvx wandb login
 ```
 
 #### Cursor global
 Enable the server for all Cursor projects, doesn't matter where this is run:
 
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
-  --config_path ~/.cursor/mcp.json \
-  --add_deno_path \
-  && uvx wandb login
+uvx --from git+https://github.com/wandb/wandb-mcp-server -- add_to_client --config_path ~/.cursor/mcp.json --add_deno_path && uvx wandb login
 ```
 
 ### Windsurf installation
 
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
-  --config_path ~/.codeium/windsurf/mcp_config.json \
-  --add_deno_path \
-  && uvx wandb login
+uvx --from git+https://github.com/wandb/wandb-mcp-server -- add_to_client --config_path ~/.codeium/windsurf/mcp_config.json --add_deno_path && uvx wandb login
 ```
 
 ### Claude Code
@@ -146,10 +134,7 @@ First ensure `uv` is installed, you might have to use brew to install depite `uv
 Then run the below:
 
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
-  --config_path ~/Library/Application\ Support/Claude/claude_desktop_config.json \
-  --add_deno_path \
-  && uvx wandb login
+uvx --from git+https://github.com/wandb/wandb-mcp-server@add-sandbox-functionality -- add_to_client --config_path "~/Library/Application Support/Claude/claude_desktop_config.json" --add_deno_path && uvx wandb login
 ```
 
 
@@ -160,7 +145,7 @@ The `add_to_client` function accepts a number of flags to enable writing optiona
 
 ```bash
 # Write the server config file with additional env vars
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
+uvx --from git+https://github.com/wandb/wandb-mcp-server -- add_to_client \
   --config_path ~/.codeium/windsurf/mcp_config.json \
   --e2b_api_key 12345abcde \
   --add_deno_path \
@@ -370,9 +355,9 @@ If the code execution tool is not available or failing, here's how to diagnose a
    zsh -c "deno --version"  # or bash -c "deno --version"
    ```
 
-**Quick Fix:** If you have Deno installed but it's not being detected, try using the automatic PATH fix:
+**Quick Fix:** If you have Deno installed but it's not being detected, try using the automatic PATH fix with the `add_deno_path` flag:
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
+uvx --from git+https://github.com/wandb/wandb-mcp-server -- add_to_client \
   --config_path /path/to/your/mcp_config.json \
   --add_deno_path
 ```
