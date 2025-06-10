@@ -89,34 +89,52 @@ The sandbox tool will use E2B if an E2B API key is detected. E2B provides persis
 We provide a helper utility below to easily install the Weights & Biases MCP Server into applications that use a JSON server spec - inspired by the OpenMCP Server Registry [add-to-client pattern](https://www.open-mcp.org/servers).
 
 
+### Example helper
+
+```bash
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
+  --config_path <path to the MCP config json file> \
+  --add-deno-path \
+  && uvx wandb login
+```
+
 ### Cursor installation
 #### Cursor project
 Enable the server for a specific project. Run the following in the root of your project dir:
 
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client .cursor/mcp.json && uvx wandb login
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
+  --config_path cursor/mcp.json \
+  --add-deno-path \
+  && uvx wandb login
 ```
 
 #### Cursor global
 Enable the server for all Cursor projects, doesn't matter where this is run:
 
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.cursor/mcp.json && uvx wandb login
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
+  --config_path ~/.cursor/mcp.json \
+  --add-deno-path \
+  && uvx wandb login
 ```
 
 ### Windsurf installation
 
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.codeium/windsurf/mcp_config.json && uvx wandb login
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
+  --config_path ~/.codeium/windsurf/mcp_config.json \
+  --add-deno-path \
+  && uvx wandb login
 ```
 
 ### Claude Code
 
 ```bash
-claude mcp add wandb -- uvx --from git+https://github.com/wandb/wandb-mcp-server wandb_mcp_server && uvx wandb login
+claude mcp add wandb -- uvx --from git+https://github.com/wandb/wandb-mcp-server wandb_mcp_server --add-deno-path && uvx wandb login
 ```
 
-Passing an environment variable, e.g. api key:
+Passing an environment variable to Claude Code, e.g. api key:
 
 ```bash
 claude mcp add wandb -e WANDB_API_KEY=your-api-key -- uvx --from git+https://github.com/wandb/wandb-mcp-server wandb_mcp_server
@@ -128,7 +146,10 @@ First ensure `uv` is installed, you might have to use brew to install depite `uv
 Then run the below:
 
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library/Application\ Support/Claude/claude_desktop_config.json && uvx wandb login
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
+  --config_path ~/Library/Application\ Support/Claude/claude_desktop_config.json \
+  --add-deno-path \
+  && uvx wandb login
 ```
 
 
@@ -142,6 +163,7 @@ The `add_to_client` function accepts a number of flags to enable writing optiona
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
   --config_path ~/.codeium/windsurf/mcp_config.json \
   --e2b_api_key 12345abcde \
+  --add_deno_path \
   --write_env_vars MCP_LOGS_WANDB_ENTITY=my_wandb_entity E2B_PACKAGE_ALLOWLIST=numpy,pandas
 
 # Then login to W&B
@@ -247,6 +269,11 @@ You can configure sandbox behavior using environment variables:
 #### Disable Sandbox
 - `DISABLE_CODE_SANDBOX`: Set to any value to completely disable the code sandbox tool (e.g., `DISABLE_CODE_SANDBOX=1`)
 
+#### Deno path
+Use the `--add_deno_path` when using the `add_to_client` helper to automatically add Deno to your MCP configuration's PATH if Deno is installed but not in your system PATH. The flag automatically detects Deno installations from common locations including:
+- **macOS/Linux**: `~/.deno/bin`, Homebrew (`/opt/homebrew/bin`, `/usr/local/bin`), MacPorts, system packages, Snap, Flatpak, asdf, vfox, Nix, Cargo, npm global
+- **Windows**: `~/.deno/bin`, Scoop, Chocolatey, Winget, npm global, system locations
+
 #### Package Installation Security
 Control which packages can be installed in E2B sandboxes:
 - `E2B_PACKAGE_ALLOWLIST`: Comma-separated list of allowed packages (e.g., `numpy,pandas,matplotlib`)
@@ -313,38 +340,60 @@ If the code execution tool is not available or failing, here's how to diagnose a
 - You can run `deno --version` in your terminal
 - But MCP server logs show "Pyodide not available (Deno not installed)"
 
-**Root Cause:** Deno is not in the PATH that the MCP server process can access
+**Root Cause:** Deno is not properly installed or not in the system PATH
 
 **Solutions:**
 
-1. **Add PATH to your MCP configuration:**
-   ```json
-   {
-     "mcpServers": {
-       "wandb": {
-         "command": "uvx",
-         "args": ["--from", "git+https://github.com/wandb/wandb-mcp-server", "wandb_mcp_server"],
-         "env": {
-           "WANDB_API_KEY": "your-key",
-           "PATH": "/Users/yourusername/.deno/bin:/usr/local/bin:/usr/bin:/bin"
-         }
-       }
-     }
-   }
+1. **Install Deno correctly:**
+   ```bash
+   curl -fsSL https://deno.land/install.sh | sh -s -- -y
    ```
 
-2. **Fix your shell configuration:**
+2. **Add to your shell configuration:**
    ```bash
-   # Check if Deno is in your PATH
-   which deno
-   
-   # If not found, add it manually
-   echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.zshrc  # or ~/.bashrc
-   source ~/.zshrc  # or ~/.bashrc
-   
-   # Verify it works
-   deno --version
+   echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc  # for bash
+   echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.zshrc   # for zsh
+   source ~/.bashrc  # or ~/.zshrc
    ```
+
+3. **Restart your MCP client** (Claude Desktop, Cursor, etc.) to pick up the new PATH
+
+4. **Verify your setup:**
+   ```bash
+   # Check if Deno is installed
+   ls -la ~/.deno/bin/deno
+   
+   # Test Deno works
+   deno --version
+   
+   # Test in a fresh shell
+   zsh -c "deno --version"  # or bash -c "deno --version"
+   ```
+
+**Quick Fix:** If you have Deno installed but it's not being detected, try using the automatic PATH fix:
+```bash
+uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
+  --config_path /path/to/your/mcp_config.json \
+  --add_deno_path
+```
+
+This automatically searches for Deno in common installation locations across different package managers and installation methods.
+
+**Alternative:** If PATH issues persist, you can manually specify the environment in your MCP client config:
+```json
+{
+  "mcpServers": {
+    "wandb": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/wandb/wandb-mcp-server", "wandb_mcp_server"],
+      "env": {
+        "WANDB_API_KEY": "your-key",
+        "PATH": "/Users/yourusername/.deno/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}
+```
 
 3. **Test the detection directly:**
    ```bash
