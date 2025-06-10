@@ -83,7 +83,7 @@ class PyodideSandbox:
             logger.warning(
                 "Deno is not installed. Pyodide sandbox requires Deno for secure local execution. "
                 "To install Deno:\n"
-                "  - macOS/Linux: curl -fsSL https://deno.land/install.sh | sh\n"
+                "  - macOS/Linux: curl -fsSL https://deno.land/install.sh | sh -s -- -y && source ~/.bashrc\n"
                 "  - Windows: irm https://deno.land/install.ps1 | iex\n"
                 "  - Or visit: https://deno.land/manual/getting_started/installation"
             )
@@ -448,7 +448,7 @@ class PyodideSandbox:
             raise SandboxError(
                 "Deno is not available for Pyodide execution.\n"
                 "To install Deno:\n"
-                "  - macOS/Linux: curl -fsSL https://deno.land/install.sh | sh\n"
+                "  - macOS/Linux: curl -fsSL https://deno.land/install.sh | sh -s -- -y && source ~/.bashrc\n"
                 "  - Windows: irm https://deno.land/install.ps1 | iex\n"
                 "  - Or visit: https://deno.land/manual/getting_started/installation"
             )
@@ -468,7 +468,7 @@ class PyodideSandbox:
         if not self.available:
             raise SandboxError(
                 "Deno is not available for Pyodide execution. "
-                "Install Deno with: curl -fsSL https://deno.land/install.sh | sh"
+                "Install Deno with: curl -fsSL https://deno.land/install.sh | sh -s -- -y && source ~/.bashrc"
             )
 
         # Create file write request

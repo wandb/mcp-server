@@ -66,7 +66,7 @@ def check_sandbox_availability() -> tuple[bool, List[str], str]:
     except FileNotFoundError:
         reasons.append(
             "Pyodide not available (Deno not installed). "
-            "Install Deno with: curl -fsSL https://deno.land/install.sh | sh"
+            "Install Deno with: curl -fsSL https://deno.land/install.sh | sh -s -- -y && source ~/.bashrc"
         )
     except subprocess.TimeoutExpired:
         reasons.append("Pyodide not available (Deno check timed out)")
@@ -83,7 +83,7 @@ def check_sandbox_availability() -> tuple[bool, List[str], str]:
         reason = (
             "No sandboxes available. To enable code execution:\n"
             "1. For cloud sandbox: Set E2B_API_KEY environment variable (get key at https://e2b.dev)\n"
-            "2. For local sandbox: Install Deno with: curl -fsSL https://deno.land/install.sh | sh"
+            "2. For local sandbox: Install Deno with: curl -fsSL https://deno.land/install.sh | sh -s -- -y && source ~/.bashrc"
         )
         if not is_available:
             reason = f"No sandboxes available. {' '.join(reasons)}"
@@ -285,7 +285,7 @@ async def execute_sandbox_code(
             "error": (
                 "No sandboxes available. To enable code execution:\n"
                 "1. For cloud sandbox: Set E2B_API_KEY environment variable (get key at https://e2b.dev)\n"
-                "2. For local sandbox: Install Deno with: curl -fsSL https://deno.land/install.sh | sh"
+                "2. For local sandbox: Install Deno with: curl -fsSL https://deno.land/install.sh | sh -s -- -y && source ~/.bashrc"
             ),
             "logs": [],
             "sandbox_used": "none",

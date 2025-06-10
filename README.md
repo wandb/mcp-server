@@ -44,10 +44,11 @@ The local Pyodide sandbox uses Deno to run Python in a WebAssembly environment, 
 
 ```bash
 # One-line install for macOS/Linux:
-curl -fsSL https://deno.land/install.sh | sh
+curl -fsSL https://deno.land/install.sh | sh -s -- -y
 
 # Add Deno to your PATH (if not done automatically):
-echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc  # or ~/.zshrc
+echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc  # for bash
+echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.zshrc   # for zsh
 source ~/.bashrc  # or ~/.zshrc
 
 # Or on Windows (PowerShell):
@@ -56,7 +57,18 @@ irm https://deno.land/install.ps1 | iex
 
 After installation, verify Deno is available:
 ```bash
+# Restart your terminal or source your shell config
+source ~/.bashrc  # or ~/.zshrc
+
+# Verify installation
 deno --version
+```
+
+If `deno --version` doesn't work, you may need to manually add Deno to your PATH:
+```bash
+echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc  # for bash
+echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.zshrc   # for zsh
+source ~/.bashrc  # or ~/.zshrc
 ```
 
 Note, first execution may take longer as Pyodide downloads required packages
@@ -273,6 +285,12 @@ This indicates that the `uv` package manager cannot be found. Fix this with thes
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
+   or if using a Mac:
+
+   ```
+   brew install uv
+   ```
+
 2. If the error persists after installation, create a symlink to make `uv` available system-wide:
    ```bash
    sudo ln -s ~/.local/bin/uv /usr/local/bin/uv
@@ -281,6 +299,122 @@ This indicates that the `uv` package manager cannot be found. Fix this with thes
 3. Restart your application or IDE after making these changes.
 
 This ensures that the `uv` executable is accessible from standard system paths that are typically included in the PATH for all processes.
+
+### Code Sandbox Issues
+
+If the code execution tool is not available or failing, here's how to diagnose and fix common issues:
+
+<details>
+<summary><strong>Deno/Pyodide Sandbox Issues</strong></summary>
+
+**Problem:** Deno is installed but not detected by the MCP server
+
+**Symptoms:**
+- You can run `deno --version` in your terminal
+- But MCP server logs show "Pyodide not available (Deno not installed)"
+
+**Root Cause:** Deno is not in the PATH that the MCP server process can access
+
+**Solutions:**
+
+1. **Add PATH to your MCP configuration:**
+   ```json
+   {
+     "mcpServers": {
+       "wandb": {
+         "command": "uvx",
+         "args": ["--from", "git+https://github.com/wandb/wandb-mcp-server", "wandb_mcp_server"],
+         "env": {
+           "WANDB_API_KEY": "your-key",
+           "PATH": "/Users/yourusername/.deno/bin:/usr/local/bin:/usr/bin:/bin"
+         }
+       }
+     }
+   }
+   ```
+
+2. **Fix your shell configuration:**
+   ```bash
+   # Check if Deno is in your PATH
+   which deno
+   
+   # If not found, add it manually
+   echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.zshrc  # or ~/.bashrc
+   source ~/.zshrc  # or ~/.bashrc
+   
+   # Verify it works
+   deno --version
+   ```
+
+3. **Test the detection directly:**
+   ```bash
+   # Test if Python can detect Deno the same way the MCP server does
+   python3 -c "
+   import subprocess
+   try:
+       result = subprocess.run(['deno', '--version'], capture_output=True, text=True, timeout=5)
+       print(f'Success: {result.returncode == 0}')
+       print(f'Output: {result.stdout}')
+   except FileNotFoundError:
+       print('Deno not found in PATH')
+   except Exception as e:
+       print(f'Error: {e}')
+   "
+   ```
+
+**Problem:** Deno installation fails or PATH issues persist
+
+**Solutions:**
+- Reinstall Deno with automatic PATH setup:
+  ```bash
+  curl -fsSL https://deno.land/install.sh | sh -s -- -y
+  source ~/.bashrc  # or ~/.zshrc
+  ```
+ - Verify installation location:
+   ```bash
+   ls -la ~/.deno/bin/deno
+   ```
+
+</details>
+
+<details>
+<summary><strong>E2B Sandbox Issues</strong></summary>
+
+**Problem:** E2B sandbox not available
+
+**Check:** Verify your API key is set:
+```bash
+echo $E2B_API_KEY
+```
+
+**Solutions:**
+1. Get an API key from [e2b.dev](https://e2b.dev)
+ 2. Set it in your environment or MCP configuration
+ 3. Restart your MCP server
+
+</details>
+
+<details>
+<summary><strong>General Debugging Steps</strong></summary>
+
+1. **Check MCP server startup logs** for sandbox availability messages
+2. **Verify environment variables** are properly set in your MCP configuration
+3. **Test sandbox detection** using the Python snippet above
+ 4. **Restart your MCP client** (Claude Desktop, Cursor, etc.) after making configuration changes
+ 5. **Check for conflicting installations** - ensure you don't have multiple Deno installations
+
+</details>
+
+<details>
+<summary><strong>Still Having Issues?</strong></summary>
+
+If sandbox detection still fails:
+1. Check the exact error message in your MCP server logs
+2. Verify your shell configuration files (`.zshrc`, `.bashrc`) are properly formatted
+ 3. Try running the MCP server directly from terminal to see if PATH issues persist
+ 4. Consider using E2B as an alternative if Deno setup is problematic
+
+</details>
 
 
 ## Testing

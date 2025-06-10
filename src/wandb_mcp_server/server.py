@@ -340,7 +340,7 @@ def cli():
             logger.info("To enable code execution, you can:")
             logger.info("1. For local execution: Install Deno")
             logger.info(
-                "   - macOS/Linux: curl -fsSL https://deno.land/install.sh | sh"
+                "   - macOS/Linux: curl -fsSL https://deno.land/install.sh | sh -s -- -y && source ~/.bashrc"
             )
             logger.info("   - Windows: irm https://deno.land/install.ps1 | iex")
             logger.info('   - Add to PATH: export PATH="$HOME/.deno/bin:$PATH"')
