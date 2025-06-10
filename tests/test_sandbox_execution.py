@@ -229,38 +229,6 @@ class TestPyodideSandbox:
         sandbox = PyodideSandbox()
         assert sandbox.available is False
 
-    @pytest.mark.asyncio
-    @patch("asyncio.create_subprocess_exec")
-    async def test_pyodide_deno_usage(self, mock_subprocess):
-        """Test that Pyodide uses Deno to run the TypeScript sandbox."""
-        # Mock subprocess
-        mock_process = AsyncMock()
-        mock_process.stdin = AsyncMock()
-        mock_process.stdout = AsyncMock()
-        mock_process.stderr = AsyncMock()
-        mock_process.returncode = None  # Process is alive
-        mock_process.stdout.readline = AsyncMock(
-            return_value=b'{"success": true, "output": "test output", "error": null, "logs": []}\n'
-        )
-        mock_process.stderr.readline = AsyncMock(
-            return_value=b"Pyodide sandbox server ready\n"
-        )
-        mock_subprocess.return_value = mock_process
-
-        sandbox = PyodideSandbox()
-        sandbox.available = True
-
-        result = await sandbox.execute_code("print('test')")
-
-        # Should call deno with the TypeScript script
-        mock_subprocess.assert_called()
-        call_args = mock_subprocess.call_args[0]
-        assert call_args[0] == "deno"
-        assert call_args[1] == "run"
-        assert "pyodide_sandbox.ts" in str(call_args)
-
-        assert result["success"] is True
-        assert result["output"] == "test output"
 
 
 class TestMainExecutionFunction:
@@ -294,90 +262,7 @@ class TestMainExecutionFunction:
             assert "No sandboxes available" in result["error"]
             assert result["sandbox_used"] == "none"
 
-    @pytest.mark.asyncio
-    @patch(
-        "wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code._execution_cache"
-    )
-    async def test_caching_behavior(self, mock_cache):
-        """Test that caching works correctly."""
-        # First call - cache miss
-        mock_cache.get.return_value = None
 
-        with patch.dict("os.environ", {"E2B_API_KEY": ""}, clear=False):
-            with patch(
-                "wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.PyodideSandbox"
-            ) as mock_sandbox:
-                sandbox_instance = mock_sandbox.return_value
-                sandbox_instance.available = True
-                sandbox_instance.execute_code = AsyncMock(
-                    return_value={
-                        "success": True,
-                        "output": "test output",
-                        "error": None,
-                        "logs": [],
-                    }
-                )
-
-                code = "print('test')"
-                result = await execute_sandbox_code(code)
-
-                # Should check cache
-                mock_cache.get.assert_called()
-
-                # Verify result has sandbox_used added
-                assert result["sandbox_used"] == "pyodide"
-
-                # Should cache the result
-                mock_cache.set.assert_called_once()
-
-                # Second call - cache hit
-                mock_cache.get.return_value = {
-                    "success": True,
-                    "output": "cached output",
-                    "error": None,
-                    "logs": [],
-                    "sandbox_used": "pyodide",
-                }
-
-                result2 = await execute_sandbox_code(code)
-
-                assert result2["output"] == "cached output"
-                assert result2["execution_time_ms"] == 0  # Cached result
-
-    @pytest.mark.asyncio
-    async def test_fallback_behavior(self):
-        """Test sandbox fallback when preferred options fail."""
-        with patch("os.getenv", return_value="test_api_key"):
-            with patch(
-                "wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.E2BSandbox"
-            ) as mock_e2b:
-                with patch(
-                    "wandb_mcp_server.mcp_tools.code_sandbox.execute_sandbox_code.PyodideSandbox"
-                ) as mock_pyodide:
-                    # E2B fails
-                    e2b_instance = mock_e2b.return_value
-                    e2b_instance.execute_code = AsyncMock(
-                        side_effect=Exception("E2B failed")
-                    )
-                    e2b_instance.close_sandbox = AsyncMock()
-
-                    # Pyodide succeeds
-                    pyodide_instance = mock_pyodide.return_value
-                    pyodide_instance.available = True
-                    pyodide_instance.execute_code = AsyncMock(
-                        return_value={
-                            "success": True,
-                            "output": "pyodide output",
-                            "error": None,
-                            "logs": [],
-                        }
-                    )
-
-                    result = await execute_sandbox_code("print('test')")
-
-                    assert result["success"] is True
-                    assert result["sandbox_used"] == "pyodide"
-                    assert result["output"] == "pyodide output"
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ from wandb_mcp_server.utils import get_rich_logger
 from .sandbox_utils import (
     SandboxError,
     validate_timeout,
-    DEFAULT_TIMEOUT_SECONDS,
+    DEFAULT_SANDBOX_EXECUTION_TIMEOUT_SECONDS,
 )
 
 logger = get_rich_logger(__name__)
@@ -119,6 +119,41 @@ class PyodideSandbox:
         return True
 
     @classmethod
+    async def _health_check(cls, timeout: float = 2.0) -> bool:
+        """
+        Perform a health check on the process by executing simple code.
+        Returns True if healthy, False otherwise.
+        """
+        if not cls._is_process_alive():
+            return False
+        
+        try:
+            # Send a simple health check request
+            health_request = {"type": "execute", "code": "print('health_check_ok')", "timeout": 1}
+            request_json = json.dumps(health_request) + "\n"
+            
+            cls._shared_process.stdin.write(request_json.encode())
+            await cls._shared_process.stdin.drain()
+            
+            # Try to read response with short timeout
+            line = await asyncio.wait_for(
+                cls._shared_process.stdout.readline(),
+                timeout=timeout
+            )
+            
+            if not line:
+                return False
+                
+            try:
+                result = json.loads(line.decode("utf-8").strip())
+                return result.get("success", False) and "health_check_ok" in result.get("output", "")
+            except:
+                return False
+                
+        except (asyncio.TimeoutError, Exception):
+            return False
+
+    @classmethod
     async def get_or_create_process(cls, script_path: Path):
         """Get or create the shared Pyodide process."""
         async with cls._get_process_lock():
@@ -127,7 +162,17 @@ class PyodideSandbox:
                 raise cls._initialization_error
 
             # Check if we need to create a new process
-            if not cls._is_process_alive():
+            # First do a quick alive check, then a health check if alive
+            needs_new_process = not cls._is_process_alive()
+            
+            if not needs_new_process and cls._initialized:
+                # Process appears alive, do a health check
+                is_healthy = await cls._health_check()
+                if not is_healthy:
+                    logger.warning("Process failed health check, will recreate")
+                    needs_new_process = True
+            
+            if needs_new_process:
                 # Clean up old process if it exists
                 if cls._shared_process is not None:
                     try:
@@ -393,7 +438,7 @@ class PyodideSandbox:
         }
 
     async def execute_code(
-        self, code: str, timeout: int = DEFAULT_TIMEOUT_SECONDS
+        self, code: str, timeout: int = DEFAULT_SANDBOX_EXECUTION_TIMEOUT_SECONDS
     ) -> Dict[str, Any]:
         """Execute Python code using our persistent Pyodide process."""
         # Validate timeout

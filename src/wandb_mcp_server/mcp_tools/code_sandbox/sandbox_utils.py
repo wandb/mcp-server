@@ -15,8 +15,10 @@ DEFAULT_CACHE_SIZE = 100
 DEFAULT_CACHE_TTL_SECONDS = 900  # 15 minutes
 DEFAULT_RATE_LIMIT_REQUESTS = 100
 DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
-DEFAULT_TIMEOUT_SECONDS = 30
-MAX_TIMEOUT_SECONDS = 300
+
+# Timeout configuration - can be overridden via SANDBOX_TIMEOUT_SECONDS env var
+DEFAULT_SANDBOX_EXECUTION_TIMEOUT_SECONDS = int(os.getenv("SANDBOX_TIMEOUT_SECONDS", "30"))
+MAX_TIMEOUT_SECONDS = int(os.getenv("SANDBOX_MAX_TIMEOUT_SECONDS", "300"))
 E2B_STARTUP_TIMEOUT_SECONDS = 60
 
 # Package installation security configuration
@@ -39,6 +41,11 @@ def validate_timeout(timeout: int, param_name: str = "timeout") -> int:
         raise ValueError(
             f"{param_name} must not exceed {MAX_TIMEOUT_SECONDS} seconds, got {timeout}"
         )
+    
+    # Log if using custom timeout settings
+    if os.getenv("SANDBOX_TIMEOUT_SECONDS") and timeout == DEFAULT_TIMEOUT_SECONDS:
+        logger.debug(f"Using environment-configured timeout: {timeout}s")
+    
     return timeout
 
 

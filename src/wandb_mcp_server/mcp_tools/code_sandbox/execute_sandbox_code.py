@@ -4,6 +4,7 @@ Supports both E2B cloud sandboxes and local Pyodide execution.
 """
 
 import os
+import asyncio
 import subprocess
 import time
 from typing import Any, Dict, List, Optional
@@ -16,7 +17,7 @@ from .pyodide_sandbox import PyodideSandbox
 from .sandbox_cache import ExecutionCache, CACHE_TTL_SECONDS
 from .sandbox_utils import (
     validate_timeout,
-    DEFAULT_TIMEOUT_SECONDS,
+    DEFAULT_SANDBOX_EXECUTION_TIMEOUT_SECONDS,
 )
 from .rate_limiter import RateLimiter
 
@@ -164,7 +165,7 @@ _rate_limiter = RateLimiter()
 
 async def execute_sandbox_code(
     code: str,
-    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    timeout: int = DEFAULT_SANDBOX_EXECUTION_TIMEOUT_SECONDS,
     sandbox_type: Optional[str] = None,
     install_packages: Optional[List[str]] = None,
     return_sandbox: bool = False,
@@ -309,7 +310,25 @@ async def execute_sandbox_code(
                         "Pre-loaded packages: numpy, pandas, matplotlib. "
                         "Additional packages can be imported if they're pure Python."
                     )
-                result = await sandbox.execute_code(code, timeout)
+                
+                # For Pyodide, implement additional timeout safeguard
+                try:
+                    # Add a hard timeout at the tool level as well
+                    result = await asyncio.wait_for(
+                        sandbox.execute_code(code, timeout),
+                        timeout=timeout + 10  # Give 10 seconds extra for overhead
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"Hard timeout reached for {sandbox_name} sandbox")
+                    # Force process recreation on next attempt
+                    if hasattr(sandbox, '_shared_process'):
+                        sandbox._shared_process = None
+                    result = {
+                        "success": False,
+                        "output": "",
+                        "error": f"Execution timed out after {timeout} seconds (hard timeout)",
+                        "logs": ["Process was unresponsive and will be recreated on next execution"],
+                    }
 
             # Add sandbox info and execution time
             result["sandbox_used"] = sandbox_name

@@ -49,6 +49,10 @@ class PyodideSandbox {
         },
       });
 
+      // Set up interrupt buffer for cancelling long-running code
+      // This allows us to interrupt Python execution
+      this.pyodide.setInterruptBuffer(new Uint8Array(new SharedArrayBuffer(4)));
+      
       // Load commonly used packages - output will go to stderr
       console.error("Loading packages: numpy, pandas, matplotlib...");
       await this.pyodide.loadPackage(["numpy", "pandas", "matplotlib"]);
@@ -113,13 +117,37 @@ sys.stderr = _stderr_buffer
         }
       }
 
-      // Execute the Python code
+      // Execute the Python code with timeout
       const timeout = request.timeout || 30;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout * 1000);
+      
+      // Set up timeout handling with interrupt
+      let timeoutId: number | null = null;
+      let interrupted = false;
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          // Interrupt the Python execution
+          try {
+            this.pyodide.interruptExecution();
+            interrupted = true;
+          } catch (e) {
+            console.error("Failed to interrupt execution:", e);
+          }
+          reject(new Error(`Execution timed out after ${timeout} seconds`));
+        }, timeout * 1000);
+      });
 
       try {
-        const executionResult = await this.pyodide.runPythonAsync(request.code!);
+        // Race between execution and timeout
+        const executionResult = await Promise.race([
+          this.pyodide.runPythonAsync(request.code!),
+          timeoutPromise
+        ]);
+        
+        // Clear timeout if execution completed
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+        }
         
         // Capture the output from the StringIO buffers
         const capturedOutput = await this.pyodide.runPythonAsync(`
@@ -156,6 +184,48 @@ _stderr_buffer.close()
           result.logs.push(stderrOutput);
         }
       } catch (error: any) {
+        if (interrupted || error.message?.includes("timed out")) {
+          // This is a timeout/interrupt error
+          result.error = `Execution timed out after ${timeout} seconds`;
+          result.success = false;
+          
+          // Try to capture any partial output
+          try {
+            const capturedOutput = await this.pyodide.runPythonAsync(`
+# Get captured output even if there was a timeout
+_stdout_output = _stdout_buffer.getvalue() if '_stdout_buffer' in locals() else ""
+_stderr_output = _stderr_buffer.getvalue() if '_stderr_buffer' in locals() else ""
+
+# Restore original stdout/stderr if they exist
+if '_original_stdout' in locals():
+    sys.stdout = _original_stdout
+if '_original_stderr' in locals():
+    sys.stderr = _original_stderr
+
+# Clean up if buffers exist
+if '_stdout_buffer' in locals():
+    _stdout_buffer.close()
+if '_stderr_buffer' in locals():
+    _stderr_buffer.close()
+
+(_stdout_output, _stderr_output)
+            `);
+            
+            const [stdoutOutput, stderrOutput] = capturedOutput.toJs();
+            if (stdoutOutput) {
+              result.output = stdoutOutput;
+            }
+            if (stderrOutput) {
+              result.logs.push(stderrOutput);
+            }
+          } catch {
+            // Ignore errors in cleanup
+          }
+          
+          return result;
+        }
+        
+        // Regular error (not timeout)
         // Try to capture any output before the error
         try {
           const capturedOutput = await this.pyodide.runPythonAsync(`
@@ -189,13 +259,26 @@ if '_stderr_buffer' in locals():
           // Ignore errors in cleanup
         }
         
-        result.error = error.toString();
-        if (error.type === "PythonError") {
-          // Format Python traceback nicely
-          result.error = this.pyodide.formatException(error);
+        // Handle Python errors specially
+        if (error && error.constructor && error.constructor.name === "PythonError") {
+          // Pyodide wraps Python exceptions - extract the actual error type
+          const errorStr = error.toString();
+          const errorMessage = error.message || errorStr;
+          
+          // Try to extract the Python error type from the traceback
+          // Python tracebacks typically show the error type at the end
+          const syntaxErrorMatch = errorMessage.match(/SyntaxError:|IndentationError:|NameError:|TypeError:|ValueError:|AttributeError:|KeyError:|IndexError:|ZeroDivisionError:/);
+          if (syntaxErrorMatch) {
+            result.error = errorMessage; // Include full traceback
+          } else {
+            // Fallback - at least mention it's a Python error
+            result.error = `PythonError: ${errorMessage}`;
+          }
+        } else if (error && error.message) {
+          result.error = error.message;
+        } else {
+          result.error = error.toString();
         }
-      } finally {
-        clearTimeout(timeoutId);
       }
 
     } catch (error: any) {

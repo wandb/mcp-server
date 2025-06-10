@@ -12,7 +12,7 @@ from .sandbox_utils import (
     validate_timeout,
     get_validated_env_int,
     validate_packages,
-    DEFAULT_TIMEOUT_SECONDS,
+    DEFAULT_SANDBOX_EXECUTION_TIMEOUT_SECONDS,
     E2B_STARTUP_TIMEOUT_SECONDS,
 )
 
@@ -67,6 +67,15 @@ class E2BSandbox:
     async def get_or_create_sandbox(cls):
         """Get the shared sandbox instance, reusing existing test sandboxes if available."""
         async with cls._get_sandbox_lock():
+            # Check if we have a sandbox but it might be dead
+            if cls._shared_sandbox is not None:
+                try:
+                    # Try a simple operation to check if sandbox is still alive
+                    await cls._shared_sandbox.commands.run("echo 'alive'", timeout=5)
+                except Exception as e:
+                    logger.warning(f"Existing sandbox appears to be dead: {e}")
+                    cls._shared_sandbox = None
+            
             if cls._shared_sandbox is None:
                 if not cls._api_key:
                     raise ValueError("E2B API key not set")
@@ -179,7 +188,7 @@ class E2BSandbox:
     async def execute_code(
         self,
         code: str,
-        timeout: int = DEFAULT_TIMEOUT_SECONDS,
+        timeout: int = DEFAULT_SANDBOX_EXECUTION_TIMEOUT_SECONDS,
         install_packages_list: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Execute Python code in the E2B sandbox."""
@@ -208,7 +217,18 @@ class E2BSandbox:
             file_path = "/home/user/code_to_execute.py"
 
             # Write the code to file
-            await self.sandbox.files.write(file_path, code)
+            try:
+                await self.sandbox.files.write(file_path, code)
+            except Exception as e:
+                # If we get an event loop error, the sandbox connection is likely broken
+                if "Event loop is closed" in str(e) or "Connection" in str(e):
+                    # Try to reconnect to the sandbox
+                    logger.warning(f"Sandbox connection lost, attempting to reconnect: {e}")
+                    await self.create_sandbox()
+                    # Retry the write
+                    await self.sandbox.files.write(file_path, code)
+                else:
+                    raise
 
             # Execute the file
             execution = await self.sandbox.commands.run(
