@@ -217,7 +217,7 @@ _sandbox_available, _sandbox_types, _sandbox_reason = check_sandbox_availability
 if _sandbox_available:
 
     @mcp.tool(description=EXECUTE_SANDBOX_CODE_TOOL_DESCRIPTION)
-    async def execute_sandbox_code_tool(
+    async def execute_python_sandbox_code_tool(
         code: str,
         timeout: int = 30,
         install_packages: Optional[List[str]] = None,
