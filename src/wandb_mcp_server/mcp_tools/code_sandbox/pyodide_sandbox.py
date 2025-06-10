@@ -36,7 +36,21 @@ class PyodideSandbox:
     @classmethod
     def _get_process_lock(cls):
         """Get or create the process lock in the current event loop."""
-        if cls._process_lock is None:
+        try:
+            # Check if we're in the same event loop
+            current_loop = asyncio.get_running_loop()
+            # Check if lock exists and belongs to current loop
+            if cls._process_lock is not None:
+                # Try to access the lock's loop attribute
+                lock_loop = getattr(cls._process_lock, '_loop', None)
+                if lock_loop != current_loop:
+                    # Different loop, create new lock
+                    cls._process_lock = asyncio.Lock()
+            else:
+                # No lock exists, create new one
+                cls._process_lock = asyncio.Lock()
+        except RuntimeError:
+            # No running loop, create new lock when needed
             cls._process_lock = asyncio.Lock()
         return cls._process_lock
 
@@ -523,3 +537,20 @@ Deno.exit(0);
                     cls._initialized = False
                     cls._initialization_error = None
                     cls._process_lock = None  # Reset lock to allow new event loop
+
+    @classmethod
+    def cleanup(cls):
+        """Clean up class-level state - useful for testing."""
+        if cls._shared_process is not None:
+            # Check if it's a real process (not a mock)
+            if hasattr(cls._shared_process, 'terminate') and not hasattr(cls._shared_process, '_mock_name'):
+                try:
+                    cls._shared_process.terminate()
+                    # Don't await in sync method
+                except Exception:
+                    pass
+        cls._shared_process = None
+        cls._process_lock = None
+        cls._initialized = False
+        cls._initialization_error = None
+        cls._pre_download_complete = False

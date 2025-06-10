@@ -204,6 +204,13 @@ class TestE2BSandbox:
 class TestPyodideSandbox:
     """Test Pyodide sandbox implementation."""
 
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        """Clean up class-level state before each test."""
+        PyodideSandbox.cleanup()
+        yield
+        PyodideSandbox.cleanup()
+
     @patch("subprocess.run")
     def test_deno_availability_check(self, mock_run):
         """Test Deno availability checking."""
@@ -231,6 +238,7 @@ class TestPyodideSandbox:
         mock_process.stdin = AsyncMock()
         mock_process.stdout = AsyncMock()
         mock_process.stderr = AsyncMock()
+        mock_process.returncode = None  # Process is alive
         mock_process.stdout.readline = AsyncMock(
             return_value=b'{"success": true, "output": "test output", "error": null, "logs": []}\n'
         )

@@ -20,6 +20,15 @@ load_dotenv()
 class TestNativeFileOperations:
     """Test native file operations in sandboxes."""
 
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        """Clean up class-level state before each test."""
+        PyodideSandbox.cleanup()
+        E2BSandbox.cleanup()
+        yield
+        PyodideSandbox.cleanup()
+        E2BSandbox.cleanup()
+
     @pytest.mark.asyncio
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
     async def test_e2b_direct_file_write_read(self):

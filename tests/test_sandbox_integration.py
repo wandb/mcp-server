@@ -46,9 +46,11 @@ class TestPyodideIntegration:
     async def setup_and_cleanup(self):
         """Setup and cleanup for each test."""
         # Clear any existing shared process before test
+        PyodideSandbox.cleanup()
         await PyodideSandbox.cleanup_shared_process()
         yield
         # Cleanup after test
+        PyodideSandbox.cleanup()
         await PyodideSandbox.cleanup_shared_process()
 
     def test_pyodide_availability(self):
@@ -245,9 +247,11 @@ class TestE2BIntegration:
     async def setup_and_cleanup(self):
         """Setup and cleanup for each test."""
         # Cleanup any existing shared sandbox
+        E2BSandbox.cleanup()
         await E2BSandbox.cleanup_shared_sandbox()
         yield
         # Cleanup after test
+        E2BSandbox.cleanup()
         await E2BSandbox.cleanup_shared_sandbox()
 
     def test_e2b_availability(self):

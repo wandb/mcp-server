@@ -24,6 +24,17 @@ load_dotenv()
 class TestSandboxMCPTool:
     """Test the MCP sandbox tool integration."""
 
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        """Clean up class-level state before each test."""
+        from wandb_mcp_server.mcp_tools.code_sandbox.pyodide_sandbox import PyodideSandbox
+        from wandb_mcp_server.mcp_tools.code_sandbox.e2b_sandbox import E2BSandbox
+        PyodideSandbox.cleanup()
+        E2BSandbox.cleanup()
+        yield
+        PyodideSandbox.cleanup()
+        E2BSandbox.cleanup()
+
     def test_anthropic_tool_schema_generation(self):
         """Test that the tool schema is properly generated for Anthropic."""
         # Create a mock function with the expected signature

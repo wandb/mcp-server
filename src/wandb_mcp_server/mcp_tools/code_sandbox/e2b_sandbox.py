@@ -24,13 +24,34 @@ class E2BSandbox:
 
     # Class-level persistent sandbox instance
     _shared_sandbox = None
-    _sandbox_lock = asyncio.Lock()
+    _sandbox_lock = None  # Will be created on first use
     _api_key = None
 
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.sandbox = None  # Initialize the sandbox attribute
         E2BSandbox._api_key = api_key
+
+    @classmethod
+    def _get_sandbox_lock(cls):
+        """Get or create the sandbox lock in the current event loop."""
+        try:
+            # Check if we're in the same event loop
+            current_loop = asyncio.get_running_loop()
+            # Check if lock exists and belongs to current loop
+            if cls._sandbox_lock is not None:
+                # Try to access the lock's loop attribute
+                lock_loop = getattr(cls._sandbox_lock, '_loop', None)
+                if lock_loop != current_loop:
+                    # Different loop, create new lock
+                    cls._sandbox_lock = asyncio.Lock()
+            else:
+                # No lock exists, create new one
+                cls._sandbox_lock = asyncio.Lock()
+        except RuntimeError:
+            # No running loop, create new lock when needed
+            cls._sandbox_lock = asyncio.Lock()
+        return cls._sandbox_lock
 
     async def __aenter__(self):
         """Context manager entry - get sandbox reference."""
@@ -45,7 +66,7 @@ class E2BSandbox:
     @classmethod
     async def get_or_create_sandbox(cls):
         """Get the shared sandbox instance, creating it if necessary."""
-        async with cls._sandbox_lock:
+        async with cls._get_sandbox_lock():
             if cls._shared_sandbox is None:
                 if not cls._api_key:
                     raise ValueError("E2B API key not set")
@@ -217,7 +238,7 @@ class E2BSandbox:
     @classmethod
     async def cleanup_shared_sandbox(cls):
         """Explicitly close the shared sandbox instance (for cleanup)."""
-        async with cls._sandbox_lock:
+        async with cls._get_sandbox_lock():
             if cls._shared_sandbox is not None:
                 try:
                     await cls._shared_sandbox.close()
@@ -226,3 +247,10 @@ class E2BSandbox:
                     logger.error(f"Error closing shared E2B sandbox: {e}")
                 finally:
                     cls._shared_sandbox = None
+
+    @classmethod
+    def cleanup(cls):
+        """Clean up class-level state - useful for testing."""
+        cls._shared_sandbox = None
+        cls._sandbox_lock = None
+        cls._api_key = None

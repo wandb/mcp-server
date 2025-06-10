@@ -26,6 +26,17 @@ load_dotenv()
 class TestSandboxPersistence:
     """Test file persistence across sandbox sessions."""
 
+    @pytest.fixture(autouse=True)
+    async def cleanup(self):
+        """Clean up class-level state before each test."""
+        from wandb_mcp_server.mcp_tools.code_sandbox.pyodide_sandbox import PyodideSandbox
+        PyodideSandbox.cleanup()
+        E2BSandbox.cleanup()
+        yield
+        PyodideSandbox.cleanup()
+        E2BSandbox.cleanup()
+        await E2BSandbox.cleanup_shared_sandbox()
+
     @pytest.mark.asyncio
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
     async def test_e2b_file_persistence(self):

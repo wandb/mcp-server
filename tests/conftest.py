@@ -111,9 +111,8 @@ def setup_weave_session_config(request):
 def pytest_configure(config):
     # Ensure asyncio event loop scope is appropriate if using async tests with pytest-asyncio
     # This was in your original file, keeping it for compatibility if needed.
-    if hasattr(
-        config.option, "asyncio_mode"
-    ):  # Check if pytest-asyncio options are present
+    if hasattr(config.option, "asyncio_mode"):  # Check if pytest-asyncio options are present
+        config.option.asyncio_mode = "auto"
         config.option.asyncio_default_fixture_loop_scope = "function"
 
 
