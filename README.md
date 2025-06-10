@@ -78,7 +78,7 @@ We provide a helper utility below to easily install the Weights & Biases MCP Ser
 
 
 ### Cursor installation
-#### Specific Cursor project
+#### Cursor project
 Enable the server for a specific project. Run the following in the root of your project dir:
 
 ```bash
@@ -104,7 +104,7 @@ uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/.codeiu
 claude mcp add wandb -- uvx --from git+https://github.com/wandb/wandb-mcp-server wandb_mcp_server && uvx wandb login
 ```
 
-How to pass an environment variable:
+Passing an environment variable, e.g. api key:
 
 ```bash
 claude mcp add wandb -e WANDB_API_KEY=your-api-key -- uvx --from git+https://github.com/wandb/wandb-mcp-server wandb_mcp_server
@@ -112,6 +112,8 @@ claude mcp add wandb -e WANDB_API_KEY=your-api-key -- uvx --from git+https://git
 
 ### Claude Desktop installation
 First ensure `uv` is installed, you might have to use brew to install depite `uv` being available in your terminal.
+
+Then run the below:
 
 ```bash
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client ~/Library/Application\ Support/Claude/claude_desktop_config.json && uvx wandb login
@@ -174,20 +176,20 @@ The full list of environment variables used to control the server's settings can
 
 ## Available MCP tools
 
-### wandb
+### 1. wandb
 -  **`query_wandb_tool`** Execute queries against wandb experiment tracking data including Runs & Sweeps.
   
-### weave
+### 2. weave
 - **`query_weave_traces_tool`** Queries Weave traces with powerful filtering, sorting, and pagination options.
   Returns either complete trace data or just metadata to avoid overwhelming the LLM context window.
 
 - **`count_weave_traces_tool`** Efficiently counts Weave traces matching given filters without returning the trace data.
   Returns both total trace count and root traces count to understand project scope before querying.
 
-### W&B Support agent
+### 3. W&B Support agent
 - **`query_wandb_support_bot`** Connect your client to [wandbot](https://github.com/wandb/wandbot), our RAG-powered support agent for general help on how to use Weigths & Biases products and features.
 
-### Python code sandbox
+### 4. Python code sandbox
 - **`execute_sandbox_code_tool`** Execute Python code in secure, isolated sandbox environments, either a hosted E2B sandbox or a local Pyodide sandbox, WebAssembly-based execution that uses Deno to isolate execution from the host system (inspired by [Pydantic AI's Run Python MCP](https://ai.pydantic.dev/mcp/run-python/)). See sandbox setup instructions above.
 
   **Sandbox Behavior:**
@@ -200,12 +202,31 @@ The full list of environment variables used to control the server's settings can
   - Use the `save_filename` parameter to save results: `save_filename="my_data.json"`
   - Files are saved to `/tmp/` directory in the sandbox
 
-### Saving Analysis
+### 5. Saving Analysis
 - **`create_wandb_report_tool`** Creates a new W&B Report with markdown text and HTML-rendered visualizations.
   Provides a permanent, shareable document for saving analysis findings and generated charts.
 
-### General W&B helpers
+### 6. General W&B helpers
 - **`query_wandb_entity_projects`** List the available W&B entities and projects that can be accessed to give the LLM more context on how to write the correct queries for the above tools.
+
+## Usage tips
+
+#### Provide your W&B project and entity name
+
+LLMs are not mind readers, ensure you specify the W&B Entity and W&B Project to the LLM. Example query for Claude Desktop:
+
+```markdown
+how many openai.chat traces in the wandb-applied-ai-team/mcp-tests weave project? plot the most recent 5 traces over time and save to a report
+```
+
+#### Avoid asking overly broad questions
+
+Questions such as "what is my best evaluation?" are probably overly broad and you'll get to an answer faster by refining your question to be more specific such as: "what eval had the highest f1 score?"
+
+#### Ensure all data was retrieved
+
+When asking broad, general questions such as "what are my best performing runs/evaluations?" its always a good idea to ask the LLM to check that it retrieved all the available runs. The MCP tools are designed to fetch the correct amount of data, but sometimes there can be a tendency from the LLMs to only retrieve the latest runs or the last N runs.
+
 
 ## Sandbox Configuration (Optional)
 
@@ -227,26 +248,6 @@ Control which packages can be installed in E2B sandboxes:
   - The sandbox will automatically shut down after this timeout if no code is executed
   - Each code execution resets the timeout
   - Example: `E2B_SANDBOX_TIMEOUT_SECONDS=600` for 10-minute timeout
-
-## Usage tips
-
-#### Provide your W&B project and entity name
-
-LLMs are not mind readers, ensure you specify the W&B Entity and W&B Project to the LLM. Example query for Claude Desktop:
-
-```markdown
-how many openai.chat traces in the wandb-applied-ai-team/mcp-tests weave project? plot the most recent 5 traces over time and save to a report
-```
-
-#### Avoid asking overly broad questions
-
-Questions such as "what is my best evaluation?" are probably overly broad and you'll get to an answer faster by refining your question to be more specific such as: "what eval had the highest f1 score?"
-
-#### Ensure all data was retrieved
-
-When asking broad, general questions such as "what are my best performing runs/evaluations?" its always a good idea to ask the LLM to check that it retrieved all the available runs. The MCP tools are designed to fetch the correct amount of data, but sometimes there can be a tendency from the LLMs to only retrieve the latest runs or the last N runs.
-
-
 
 ## Troubleshooting
 
