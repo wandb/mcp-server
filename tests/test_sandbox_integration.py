@@ -585,8 +585,11 @@ print('Printed output')
             
             assert result["success"] is True
             assert "Printed output" in result["output"]
-            # Return value might also appear in output
-            # This behavior can vary by sandbox
+            # FIXED: Both sandboxes should capture expression return values
+            assert "Return value" in result["output"], (
+                f"{sandbox_type} failed to capture expression return value. "
+                f"Got output: {repr(result['output'])}"
+            )
 
     @pytest.mark.asyncio
     async def test_unicode_output(self):

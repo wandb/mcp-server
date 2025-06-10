@@ -213,12 +213,83 @@ class E2BSandbox:
                 }
 
         try:
-            # Write code to a temporary file in the sandbox to avoid shell escaping issues
+            # Create a wrapper script that captures both stdout and expression return values
+            wrapper_code = f'''
+import sys
+import ast
+from io import StringIO
+
+# Capture stdout
+_stdout_buffer = StringIO()
+_original_stdout = sys.stdout
+sys.stdout = _stdout_buffer
+
+# Execute the user code and capture return value
+try:
+    _code = {repr(code)}
+    _result = None
+    _has_result = False
+    
+    # Try to parse as AST to handle complex cases
+    try:
+        _parsed = ast.parse(_code, mode='exec')
+        
+        # Check if the last statement is an expression
+        if _parsed.body and isinstance(_parsed.body[-1], ast.Expr):
+            # Split into statements and final expression
+            if len(_parsed.body) > 1:
+                # Execute all but the last statement
+                _statements = ast.Module(body=_parsed.body[:-1], type_ignores=[])
+                exec(compile(_statements, '<string>', 'exec'))
+            
+            # Evaluate the last expression
+            _last_expr = ast.Expression(body=_parsed.body[-1].value)
+            _result = eval(compile(_last_expr, '<string>', 'eval'))
+            _has_result = True
+        else:
+            # No final expression, just execute everything
+            exec(compile(_parsed, '<string>', 'exec'))
+            _has_result = False
+            
+    except (SyntaxError, ValueError):
+        # Fallback: try as simple expression first, then as statements
+        try:
+            _result = eval(compile(_code, '<string>', 'eval'))
+            _has_result = True
+        except SyntaxError:
+            exec(compile(_code, '<string>', 'exec'))
+            _has_result = False
+    
+    # Get captured stdout
+    _captured_output = _stdout_buffer.getvalue()
+    
+    # Restore stdout
+    sys.stdout = _original_stdout
+    
+    # Print captured output first
+    if _captured_output:
+        print(_captured_output, end='')
+    
+    # Print result if it's not None and we have one
+    if _has_result and _result is not None:
+        if _captured_output and not _captured_output.endswith('\\n'):
+            print()  # Add newline if stdout didn't end with one
+        print(_result)
+        
+except Exception as e:
+    # Restore stdout on error
+    sys.stdout = _original_stdout
+    raise e
+finally:
+    _stdout_buffer.close()
+'''
+
+            # Write wrapper code to a temporary file in the sandbox
             file_path = "/home/user/code_to_execute.py"
 
-            # Write the code to file
+            # Write the wrapper code to file
             try:
-                await self.sandbox.files.write(file_path, code)
+                await self.sandbox.files.write(file_path, wrapper_code)
             except Exception as e:
                 # If we get an event loop error, the sandbox connection is likely broken
                 if "Event loop is closed" in str(e) or "Connection" in str(e):
@@ -226,7 +297,7 @@ class E2BSandbox:
                     logger.warning(f"Sandbox connection lost, attempting to reconnect: {e}")
                     await self.create_sandbox()
                     # Retry the write
-                    await self.sandbox.files.write(file_path, code)
+                    await self.sandbox.files.write(file_path, wrapper_code)
                 else:
                     raise
 
