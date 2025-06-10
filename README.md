@@ -161,7 +161,7 @@ Arguments passed to `--write_env_vars` must be space separated and the key and v
 }
 ```
 
-### Runing from Source
+### Running from Source
 
 Run the server from source by running the below in the root dir:
 
@@ -288,7 +288,7 @@ This ensures that the `uv` executable is accessible from standard system paths t
 The tests include a mix of unit tests and integration tests that test the tool calling reliability of a LLM. For now the integration tets only use claude-sonnet-3.7.
 
 
-####Set LLM provider API key
+#### Set LLM provider API key
 
 Set the appropriate api key in the `.env` file, e.g.
 
@@ -296,14 +296,14 @@ Set the appropriate api key in the `.env` file, e.g.
 ANTHROPIC_API_KEY=<my_key>
 ```
 
-####Run 1 test file
+#### Run 1 test file
 
 Run a single test using pytest with 10 workers
 ```
 uv run pytest -s -n 10 tests/test_query_wandb_gql.py
 ```
 
-####Test debugging
+#### Test debugging
 
 Turn on debug logging for a single sample in 1 test file
 
@@ -311,7 +311,7 @@ Turn on debug logging for a single sample in 1 test file
 pytest -s -n 1 "tests/test_query_weave_traces.py::test_query_weave_trace[longest_eval_most_expensive_child]" -v --log-cli-level=DEBUG
 ```
 
-####Sandbox tests
+#### Sandbox tests
 
 Run sandbox-specific tests:
 
