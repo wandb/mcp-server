@@ -65,16 +65,38 @@ class E2BSandbox:
 
     @classmethod
     async def get_or_create_sandbox(cls):
-        """Get the shared sandbox instance, creating it if necessary."""
+        """Get the shared sandbox instance, reusing existing test sandboxes if available."""
         async with cls._get_sandbox_lock():
             if cls._shared_sandbox is None:
                 if not cls._api_key:
                     raise ValueError("E2B API key not set")
-                logger.info("Creating new E2B sandbox instance")
+                
                 from e2b_code_interpreter import AsyncSandbox
-
                 os.environ["E2B_API_KEY"] = cls._api_key
 
+                # Try to reuse existing test sandbox first
+                try:
+                    logger.info("Checking for existing test sandboxes to reuse...")
+                    running_sandboxes = await AsyncSandbox.list()
+                    
+                    # Look for sandboxes with our test metadata
+                    for sandbox_info in running_sandboxes:
+                        metadata = getattr(sandbox_info, 'metadata', {})
+                        if metadata and metadata.get('purpose') == 'wandb-mcp-server':
+                            logger.info(f"Found existing test sandbox: {sandbox_info.sandbox_id}")
+                            try:
+                                cls._shared_sandbox = await AsyncSandbox.connect(sandbox_info.sandbox_id)
+                                logger.info("Successfully connected to existing test sandbox")
+                                return cls._shared_sandbox
+                            except Exception as e:
+                                logger.warning(f"Failed to connect to existing sandbox: {e}")
+                                continue
+                except Exception as e:
+                    logger.warning(f"Failed to list existing sandboxes: {e}")
+
+                # No existing sandbox found or connection failed, create new one
+                logger.info("Creating new E2B sandbox instance")
+                
                 # Get timeout from environment or use E2B default (15 minutes)
                 # E2B expects timeout in seconds, not milliseconds
                 timeout_seconds = get_validated_env_int(
@@ -87,7 +109,11 @@ class E2BSandbox:
                     f"Creating E2B sandbox with timeout: {timeout_seconds}s ({timeout_seconds / 60:.1f} minutes)"
                 )
 
-                cls._shared_sandbox = await AsyncSandbox.create(timeout=timeout_seconds)
+                # Create with metadata to identify test sandboxes
+                cls._shared_sandbox = await AsyncSandbox.create(
+                    timeout=timeout_seconds,
+                    metadata={"purpose": "wandb-mcp-server", "created_by": "wandb-mcp-server"}
+                )
                 logger.info("E2B sandbox instance created successfully")
             return cls._shared_sandbox
 
@@ -136,7 +162,7 @@ class E2BSandbox:
             logger.info(f"Installing packages: {package_str}")
 
             result = await self.sandbox.commands.run(
-                f"uv pip install --no-cache-dir {package_str}",
+                f"pip install --no-cache-dir {package_str}",
                 timeout=E2B_STARTUP_TIMEOUT_SECONDS,
             )
 
