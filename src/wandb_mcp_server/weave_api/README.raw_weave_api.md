@@ -166,7 +166,6 @@ The main functions provided are:
 
 - `query_traces`: Query Weave traces with flexible filtering and sorting options
 - `paginated_query_traces`: Query traces with pagination
-- `get_weave_trace_server`: Initialize and return a dummy Weave trace server interface
 
 The implementation also includes a compatibility layer to support the original Weave client-based implementation, so that existing code can continue to work without changes.
 

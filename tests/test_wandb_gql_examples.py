@@ -4,14 +4,13 @@
 # import ast
 # import json
 # import os
-# from src.wandb_mcp_server.server import query_wandb_gql_tool # Assuming src is importable
-
+# from src.wandb_mcp_server.server import query_wandb_tool # Assuming src is importable
 
 
 # # --- Configuration ---
 # TARGET_ENTITY = "c-metrics"
 # TARGET_PROJECT = "hallucination"
- 
+
 # # --- Helper Function to Extract Examples ---
 
 # def extract_gql_examples_from_docstring(docstring):
@@ -28,7 +27,7 @@
 #     # Regex to find python code blocks
 #     python_pattern = re.compile(r'\s*```python\s*\n(.*?)\n\s*```', re.DOTALL)
 
-#     # --- DEBUGGING --- 
+#     # --- DEBUGGING ---
 #     print(f"\n>>> DEBUG: Inside extract_gql_examples_from_docstring")
 #     print(f"    Attempting to find matches with pattern: {example_pattern.pattern}")
 #     print(f"    in docstring of length {len(docstring)}")
@@ -37,16 +36,16 @@
 
 #     for match in example_pattern.finditer(docstring):
 #         # --- DEBUGGING ---
-#         matches_found += 1 
-#         print(f"    >>> Found match {matches_found}: name='{match.group(1)}'") 
+#         matches_found += 1
+#         print(f"    >>> Found match {matches_found}: name='{match.group(1)}'")
 #         # --- END DEBUGGING ---
-        
+
 #         name = match.group(1)
 #         content = match.group(2)
 
 #         # --- DEBUGGING ---
 #         print(f"        --- Content for '{name}' start ---")
-#         print(content) 
+#         print(content)
 #         print(f"        --- Content for '{name}' end ---")
 #         # --- END DEBUGGING ---
 
@@ -94,10 +93,10 @@
 # def gql_examples():
 #     """Reads the target function's docstring and extracts GQL examples."""
 #     try:
-#         target_docstring = inspect.getdoc(query_wandb_gql_tool)
+#         target_docstring = inspect.getdoc(query_wandb_tool)
 #         if not target_docstring:
-#             raise ImportError(f"Could not get docstring for query_wandb_gql_tool.")
-        
+#             raise ImportError(f"Could not get docstring for query_wandb_tool.")
+
 #         # --- DEBUGGING: Print the retrieved docstring ---
 #         print("\n--- Retrieved Docstring by inspect.getdoc() ---")
 #         print(target_docstring)
@@ -119,7 +118,7 @@
 #     # Attempt to pre-load examples just to get names for parameterization
 #     # Note: This duplicates loading but simplifies parametrize setup
 #     # The fixture ensures the main test execution uses the proper setup/cached result.
-#     _target_docstring = inspect.getdoc(query_wandb_gql_tool)
+#     _target_docstring = inspect.getdoc(query_wandb_tool)
 #     if not _target_docstring:
 #          raise ImportError("Docstring not found at collection time.")
 #     _extracted_examples = extract_gql_examples_from_docstring(_target_docstring)
@@ -128,7 +127,7 @@
 #          raise ValueError("No valid example names found at collection time.")
 # except Exception as e:
 #     print(f"Warning during test collection: Could not pre-load example names - {e}")
-#     # If collection fails to get names, the test function relying on the fixture 
+#     # If collection fails to get names, the test function relying on the fixture
 #     # will fail later during setup/execution, which is acceptable.
 #     _example_names = ["SETUP_ERROR_DURING_COLLECTION"] # Provide a placeholder
 
@@ -136,14 +135,14 @@
 # # --- Test Function ---
 
 # # Apply the live_api marker
-# @pytest.mark.live_api 
+# @pytest.mark.live_api
 # @pytest.mark.parametrize(
 #     "name", # Parametrize only by the example name
 #     _example_names
 # )
 # def test_wandb_gql_example(name, gql_examples): # Inject fixture here, remove query/variables_code
 #     """Runs a test for each extracted GraphQL example using live API calls."""
-    
+
 #     if name == "SETUP_ERROR_DURING_COLLECTION":
 #         pytest.fail("Test collection could not determine example names. Check setup.")
 
@@ -168,11 +167,11 @@
 #         local_scope = {'json': json} # Provide json module in the execution scope
 #         # The variable `variables_code` should contain the raw python code from the docstring block
 #         exec(variables_code, local_scope)
-        
+
 #         # Check if 'variables' was defined in the executed code
 #         if 'variables' not in local_scope:
 #             raise NameError("Executed code snippet did not define a 'variables' dictionary.")
-            
+
 #         variables = local_scope['variables']
 
 #         if not isinstance(variables, dict):
@@ -191,7 +190,7 @@
 #              variables['entityName'] = TARGET_ENTITY
 #         if 'projectName' in variables:
 #              variables['projectName'] = TARGET_PROJECT
-             
+
 #         # Specific override for GetArtifactDetails test
 #         if name == 'GetArtifactDetails':
 #              # Use the specific artifact name provided by the user
@@ -219,7 +218,7 @@
 #     # --- Make the Live API Call ---
 #     try:
 #         # Use default max_items and items_per_page from the tool's signature
-#         result = query_wandb_gql_tool(query=query, variables=variables)
+#         result = query_wandb_tool(query=query, variables=variables)
 
 #         print(f"API Result for {name}: {result}")
 
@@ -236,7 +235,7 @@
 #         # e.g., if name == "GetProjectInfo": assert "project" in result.get("data", {})
 
 #     except Exception as e:
-#         pytest.fail(f"query_wandb_gql_tool raised an exception for example '{name}': {e}")
+#         pytest.fail(f"query_wandb_tool raised an exception for example '{name}': {e}")
 
 # # Note: This test makes live calls to the W&B API. Ensure:
 # # 1. You are logged into W&B (e.g., via `wandb login`).
@@ -244,4 +243,4 @@
 # # 3. Network connectivity is available.
 # # 4. Be mindful of API rate limits if running frequently.
 # # To run only these tests: pytest -m live_api
-# # To skip these tests: pytest -m "not live_api" 
+# # To skip these tests: pytest -m "not live_api"

@@ -30,9 +30,7 @@ logger = get_rich_logger(__name__)
 # -----------------------------------------------------------------------------
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-WANDBOT_BASE_URL = os.getenv(
-    "WANDBOT_TEST_URL", "https://wandbot.replit.app"
-)
+WANDBOT_BASE_URL = os.getenv("WANDBOT_TEST_URL", "https://wandbot.replit.app")
 
 if not ANTHROPIC_API_KEY:
     pytest.skip(

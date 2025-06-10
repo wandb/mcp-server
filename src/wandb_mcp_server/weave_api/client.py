@@ -13,8 +13,7 @@ from typing import Any, Dict, Iterator, Optional
 import requests
 from requests.exceptions import RetryError
 
-from wandb_mcp_server.tools.tools_utils import get_retry_session
-from wandb_mcp_server.utils import get_rich_logger, _wandb_api_key_via_netrc
+from wandb_mcp_server.utils import get_rich_logger
 
 logger = get_rich_logger(__name__)
 
@@ -42,15 +41,17 @@ class WeaveApiClient:
         """
         # Set up a session for connection pooling and better request handling
         self.session = requests.Session()
-        
+
         # Try to get API key from environment if not provided
         if api_key is None:
             api_key = os.environ.get("WANDB_API_KEY")
-        
+
         # Validate API key
         if not api_key:
-            raise ValueError("API key not found. Provide api_key or set WANDB_API_KEY environment variable.")
-        
+            raise ValueError(
+                "API key not found. Provide api_key or set WANDB_API_KEY environment variable."
+            )
+
         self.api_key = api_key
         self.server_url = server_url or "https://trace.wandb.ai"
         self.retries = retries
@@ -122,11 +123,13 @@ class WeaveApiClient:
             if isinstance(e, RetryError):
                 cause = e.__cause__
                 if cause and hasattr(cause, "reason"):
-                    logger.error(f"Specific reason for retry exhaustion: {cause.reason}")
+                    logger.error(
+                        f"Specific reason for retry exhaustion: {cause.reason}"
+                    )
             raise Exception(f"Failed to query Weave traces due to network error: {e}")
         except json.JSONDecodeError as e:
             logger.error(f"Error decoding JSON from Weave server: {e}")
             raise Exception(f"Failed to parse Weave API response: {e}")
         except Exception as e:
             logger.error(f"Unexpected error during HTTP request to Weave server: {e}")
-            raise 
+            raise

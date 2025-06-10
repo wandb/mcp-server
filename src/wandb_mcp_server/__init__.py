@@ -15,9 +15,8 @@ from .mcp_tools.query_weave import query_paginated_weave_traces
 
 # Define what gets imported with "from weave_mcp_server import *"
 __all__ = [
-    "mcp", 
-    "cli", 
+    "mcp",
+    "cli",
     "query_paginated_weave_traces",
-    "get_weave_trace_server",
     "add_to_client_cli",
 ]

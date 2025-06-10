@@ -132,7 +132,7 @@ class TestTraceProcessor(unittest.TestCase):
         assert result.metadata.total_traces == 2
         assert result.metadata.status_summary == {"success": 1, "error": 1, "other": 0}
         assert len(result.traces) == 2
-        
+
         # Now that traces are WeaveTrace objects, we need to access their attributes properly
         assert len(result.traces[0].inputs["text"]) == 103
         assert result.traces[0].inputs["text"].endswith("...")
@@ -334,7 +334,7 @@ class TestQueryBuilder(unittest.TestCase):
         assert result["limit"] == 10
         assert result["include_costs"] is True
         assert result["include_feedback"] is True
-        # Status is a synthetic field, so the API columns should include both "summary" 
+        # Status is a synthetic field, so the API columns should include both "summary"
         # (to get the data) and the original columns
         assert set(result["columns"]) == {"id", "op_name", "summary"}
         assert "_synthetic_fields" in result
@@ -544,7 +544,7 @@ class TestTraceService(unittest.TestCase):
 
     def setUp(self):
         """Set up test environment."""
-        self.service = TraceService(api_key="fake_api_key")
+        self.service = TraceService()
 
     @patch("wandb_mcp_server.weave_api.client.WeaveApiClient.query_traces")
     def test_query_traces(self, mock_query_traces):
@@ -591,20 +591,20 @@ class TestTraceService(unittest.TestCase):
         # Set up mock response
         mock_traces = [
             {
-                "id": "trace1", 
+                "id": "trace1",
                 "project_id": "entity/project",
                 "op_name": "test_op",
                 "trace_id": "trace1",
                 "started_at": now.isoformat(),
-                "costs": {"model1": {"total_cost": 2.0}}
+                "costs": {"model1": {"total_cost": 2.0}},
             },
             {
-                "id": "trace2", 
+                "id": "trace2",
                 "project_id": "entity/project",
                 "op_name": "test_op",
                 "trace_id": "trace2",
                 "started_at": now.isoformat(),
-                "costs": {"model1": {"total_cost": 1.0}}
+                "costs": {"model1": {"total_cost": 1.0}},
             },
         ]
         mock_query_traces.return_value = mock_traces
@@ -632,7 +632,7 @@ class TestTraceService(unittest.TestCase):
         # Set up mock response
         mock_traces = [
             {
-                "id": "trace1", 
+                "id": "trace1",
                 "project_id": "entity/project",
                 "op_name": "test_op",
                 "trace_id": "trace1",
@@ -679,7 +679,7 @@ class TestTraceService(unittest.TestCase):
             trace_id="trace3",
             started_at=now,
         )
-        
+
         # Set up mock to return different results for each call
         mock_query_traces.side_effect = [
             QueryResult(
@@ -717,47 +717,47 @@ class TestTraceService(unittest.TestCase):
             # First pass returns costs
             [
                 {
-                    "id": "1", 
+                    "id": "1",
                     "project_id": "entity/project",
                     "op_name": "test_op",
                     "trace_id": "trace1",
                     "started_at": now.isoformat(),
-                    "costs": {"model": {"total_cost": 3.0}}
+                    "costs": {"model": {"total_cost": 3.0}},
                 },
                 {
-                    "id": "2", 
+                    "id": "2",
                     "project_id": "entity/project",
                     "op_name": "test_op",
                     "trace_id": "trace2",
                     "started_at": now.isoformat(),
-                    "costs": {"model": {"total_cost": 1.0}}
+                    "costs": {"model": {"total_cost": 1.0}},
                 },
                 {
-                    "id": "3", 
+                    "id": "3",
                     "project_id": "entity/project",
                     "op_name": "test_op",
                     "trace_id": "trace3",
                     "started_at": now.isoformat(),
-                    "costs": {"model": {"total_cost": 2.0}}
+                    "costs": {"model": {"total_cost": 2.0}},
                 },
             ],
             # Second pass returns details - needs to return only the requested IDs
             [
                 {
-                    "id": "1", 
+                    "id": "1",
                     "project_id": "entity/project",
                     "op_name": "test_op",
                     "trace_id": "trace1",
                     "started_at": now.isoformat(),
-                    "data": "details1"
+                    "data": "details1",
                 },
                 {
-                    "id": "3", 
+                    "id": "3",
                     "project_id": "entity/project",
                     "op_name": "test_op",
                     "trace_id": "trace3",
                     "started_at": now.isoformat(),
-                    "data": "details3"
+                    "data": "details3",
                 },
             ],
         ]
@@ -813,7 +813,7 @@ class TestIntegration:
         mock_query_traces.return_value = mock_traces
 
         # Create service and query
-        service = TraceService(api_key="fake_api_key")
+        service = TraceService()
         result = service.query_traces(
             entity_name="test_entity",
             project_name="test_project",
@@ -839,7 +839,6 @@ class TestIntegration:
 
         # Verify truncation (now the traces are WeaveTrace objects)
         assert len(result.traces[0].inputs["text"]) == 53  # 50 + "..."
-
 
 
 if __name__ == "__main__":

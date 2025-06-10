@@ -25,11 +25,9 @@ from weave.trace_server.interface.query import (
 )
 
 from wandb_mcp_server.weave_api.models import (
-    AttributeFilter,
     FilterOperator,
     QueryFilter,
     QueryParams,
-    TimeRange,
 )
 from wandb_mcp_server.utils import get_rich_logger
 
@@ -41,7 +39,7 @@ class QueryBuilder:
 
     # Define cost fields as a class constant
     COST_FIELDS = {"total_cost", "completion_cost", "prompt_cost"}
-    
+
     # Define synthetic fields that need special handling
     SYNTHETIC_FIELDS = {"status", "latency_ms"}
 
@@ -115,7 +113,9 @@ class QueryBuilder:
             gt_op = GtOperation(**{"$gt": (field_op, literal_op)})
             return NotOperation(**{"$not": [gt_op]})
         else:
-            logger.warning(f"Unsupported comparison operator '{operator}' for {field_name}")
+            logger.warning(
+                f"Unsupported comparison operator '{operator}' for {field_name}"
+            )
             return None
 
     @classmethod
@@ -176,7 +176,9 @@ class QueryBuilder:
                         )
                     )
             elif hasattr(op_name, "pattern"):  # Regex pattern
-                operations.append(cls.create_contains_operation("op_name", op_name.pattern))
+                operations.append(
+                    cls.create_contains_operation("op_name", op_name.pattern)
+                )
 
         # Handle op_name_contains custom filter (for simple substring matching)
         if "op_name_contains" in filters:
@@ -191,7 +193,9 @@ class QueryBuilder:
                 if "*" in display_name or ".*" in display_name:
                     # Extract the part between wildcards
                     pattern = display_name.replace("*", "").replace(".*", "")
-                    operations.append(cls.create_contains_operation("display_name", pattern))
+                    operations.append(
+                        cls.create_contains_operation("display_name", pattern)
+                    )
                 else:
                     # Exact match
                     operations.append(
@@ -205,7 +209,9 @@ class QueryBuilder:
                         )
                     )
             elif hasattr(display_name, "pattern"):  # Regex pattern
-                operations.append(cls.create_contains_operation("display_name", display_name.pattern))
+                operations.append(
+                    cls.create_contains_operation("display_name", display_name.pattern)
+                )
 
         # Handle display_name_contains custom filter (for simple substring matching)
         if "display_name_contains" in filters:
@@ -255,9 +261,15 @@ class QueryBuilder:
             run_id = filters["wb_run_id"]
             # This filter expects a string for wb_run_id and uses $contains or $eq.
             if isinstance(run_id, str):
-                if "$contains" in run_id or "*" in run_id:  # Simple check for contains style
-                    pattern = run_id.replace("$contains:", "").replace("*", "")  # Basic cleanup
-                    operations.append(cls.create_contains_operation("wb_run_id", pattern.strip()))
+                if (
+                    "$contains" in run_id or "*" in run_id
+                ):  # Simple check for contains style
+                    pattern = run_id.replace("$contains:", "").replace(
+                        "*", ""
+                    )  # Basic cleanup
+                    operations.append(
+                        cls.create_contains_operation("wb_run_id", pattern.strip())
+                    )
                 else:
                     operations.append(
                         EqOperation(
@@ -269,12 +281,18 @@ class QueryBuilder:
                             }
                         )
                     )
-            elif isinstance(run_id, dict) and "$contains" in run_id:  # wb_run_id: {"$contains": "foo"}
+            elif (
+                isinstance(run_id, dict) and "$contains" in run_id
+            ):  # wb_run_id: {"$contains": "foo"}
                 pattern = run_id["$contains"]
                 if isinstance(pattern, str):
-                    operations.append(cls.create_contains_operation("wb_run_id", pattern))
+                    operations.append(
+                        cls.create_contains_operation("wb_run_id", pattern)
+                    )
                 else:
-                    logger.warning(f"Invalid $contains value for wb_run_id: {pattern}. Expected string.")
+                    logger.warning(
+                        f"Invalid $contains value for wb_run_id: {pattern}. Expected string."
+                    )
             else:
                 logger.warning(
                     f"Invalid wb_run_id filter value: {run_id}. Expected a string or dict with $contains."
@@ -324,8 +342,13 @@ class QueryBuilder:
                             if comp_op:
                                 operations.append(comp_op)
                         except (ValueError, KeyError):
-                            logger.warning(f"Invalid operator for attribute filter: {op_key}")
-                    elif isinstance(attr_value_or_op, dict) and "$contains" in attr_value_or_op:
+                            logger.warning(
+                                f"Invalid operator for attribute filter: {op_key}"
+                            )
+                    elif (
+                        isinstance(attr_value_or_op, dict)
+                        and "$contains" in attr_value_or_op
+                    ):
                         # It's a contains operation
                         if isinstance(attr_value_or_op["$contains"], str):
                             operations.append(
@@ -384,7 +407,9 @@ class QueryBuilder:
         return None  # No complex filters, so no Query object needed
 
     @classmethod
-    def separate_filters(cls, filters: Union[Dict[str, Any], QueryFilter]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def separate_filters(
+        cls, filters: Union[Dict[str, Any], QueryFilter]
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Separate filters into direct and complex filters.
 
         Args:
@@ -431,8 +456,8 @@ class QueryBuilder:
                     direct_filters[key] = [str(filters_dict[key])]
                 else:
                     direct_filters[key] = filters_dict[key]
-                    
-                # Ensure call_ids are strings 
+
+                # Ensure call_ids are strings
                 if key == "call_ids" and isinstance(direct_filters[key], list):
                     direct_filters[key] = [
                         str(call_id) for call_id in direct_filters[key]
@@ -523,7 +548,7 @@ class QueryBuilder:
 
         # Extract filters
         filters = raw_params.get("filters", {})
-        
+
         # Separate filters
         direct_filters, complex_filters = cls.separate_filters(filters)
 
@@ -546,10 +571,12 @@ class QueryBuilder:
         # Add sort criteria if present, but never send cost fields to server
         sort_by = raw_params.get("sort_by")
         if sort_by and sort_by not in cls.COST_FIELDS:
-            request_body["sort_by"] = [{
-                "field": sort_by,
-                "direction": raw_params.get("sort_direction", "desc")
-            }]
+            request_body["sort_by"] = [
+                {
+                    "field": sort_by,
+                    "direction": raw_params.get("sort_direction", "desc"),
+                }
+            ]
 
         # Add pagination parameters if present
         if "limit" in raw_params and raw_params["limit"] is not None:
@@ -560,10 +587,10 @@ class QueryBuilder:
         # Process columns, filtering out synthetic fields
         if "columns" in raw_params and raw_params["columns"]:
             original_columns = raw_params["columns"]
-            
+
             # Store synthetic fields we need to generate later
             synthetic_fields_to_add = []
-            
+
             # Filter out synthetic fields from the API request
             filtered_columns = []
             for col in original_columns:
@@ -571,24 +598,30 @@ class QueryBuilder:
                     synthetic_fields_to_add.append(col)
                 else:
                     filtered_columns.append(col)
-            
+
             # If we need to synthesize status, ensure we request summary field
-            if "status" in synthetic_fields_to_add and "summary" not in filtered_columns:
+            if (
+                "status" in synthetic_fields_to_add
+                and "summary" not in filtered_columns
+            ):
                 filtered_columns.append("summary")
-                
+
             # If we need to synthesize latency_ms, ensure we request summary field
-            if "latency_ms" in synthetic_fields_to_add and "summary" not in filtered_columns:
+            if (
+                "latency_ms" in synthetic_fields_to_add
+                and "summary" not in filtered_columns
+            ):
                 filtered_columns.append("summary")
-            
+
             # Only send filtered columns to the API
             if filtered_columns:
                 request_body["columns"] = filtered_columns
-                
+
             # Store the synthetic fields that need to be processed
             if synthetic_fields_to_add:
                 request_body["_synthetic_fields"] = synthetic_fields_to_add
-                
+
         if "expand_columns" in raw_params and raw_params["expand_columns"]:
             request_body["expand_columns"] = raw_params["expand_columns"]
 
-        return request_body 
+        return request_body

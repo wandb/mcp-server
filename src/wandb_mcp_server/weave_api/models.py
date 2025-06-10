@@ -13,12 +13,14 @@ from pydantic import BaseModel, Field
 
 class SortDirection(str, Enum):
     """Sort direction options."""
+
     ASC = "asc"
     DESC = "desc"
 
 
 class FilterOperator(str, Enum):
     """Operators for query filters."""
+
     EQUALS = "$eq"
     GREATER_THAN = "$gt"
     GREATER_THAN_EQUAL = "$gte"
@@ -30,6 +32,7 @@ class FilterOperator(str, Enum):
 @dataclass
 class TimeRange:
     """Time range for filtering traces."""
+
     start: Optional[datetime] = None
     end: Optional[datetime] = None
 
@@ -37,6 +40,7 @@ class TimeRange:
 @dataclass
 class AttributeFilter:
     """Filter for trace attributes."""
+
     path: str
     value: Any
     operator: FilterOperator = FilterOperator.EQUALS
@@ -45,6 +49,7 @@ class AttributeFilter:
 @dataclass
 class QueryFilter:
     """Query filter parameters."""
+
     display_name: Optional[str] = None
     op_name: Optional[str] = None
     op_name_contains: Optional[str] = None
@@ -63,6 +68,7 @@ class QueryFilter:
 @dataclass
 class QueryParams:
     """Parameters for a Weave trace query."""
+
     entity_name: str
     project_name: str
     filters: Optional[QueryFilter] = None
@@ -82,6 +88,7 @@ class QueryParams:
 @dataclass
 class TraceCost:
     """Cost information for a model in a trace."""
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
     prompt_tokens_total_cost: float = 0.0
@@ -91,6 +98,7 @@ class TraceCost:
 
 class TokenCounts(BaseModel):
     """Token count information for traces."""
+
     total_tokens: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
@@ -99,6 +107,7 @@ class TokenCounts(BaseModel):
 
 class TraceMetadata(BaseModel):
     """Metadata about a collection of traces."""
+
     total_traces: int = 0
     token_counts: Dict[str, Union[int, float]] = Field(default_factory=dict)
     time_range: Dict[str, Optional[datetime]] = Field(default_factory=dict)
@@ -108,6 +117,7 @@ class TraceMetadata(BaseModel):
 
 class WeaveTrace(BaseModel):
     """Representation of a Weave trace."""
+
     id: str
     project_id: str
     op_name: str
@@ -131,14 +141,17 @@ class WeaveTrace(BaseModel):
 
     class Config:
         """Pydantic model configuration."""
+
         arbitrary_types_allowed = True
 
 
 class QueryResult(BaseModel):
     """Result of a Weave trace query."""
+
     metadata: TraceMetadata
     traces: Optional[List[Union[WeaveTrace, Dict[str, Any]]]] = None
 
     class Config:
         """Pydantic model configuration."""
-        arbitrary_types_allowed = True 
+
+        arbitrary_types_allowed = True
