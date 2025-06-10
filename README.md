@@ -94,7 +94,7 @@ We provide a helper utility below to easily install the Weights & Biases MCP Ser
 ```bash
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
   --config_path <path to the MCP config json file> \
-  --add-deno-path \
+  --add_deno_path \
   && uvx wandb login
 ```
 
@@ -105,7 +105,7 @@ Enable the server for a specific project. Run the following in the root of your 
 ```bash
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
   --config_path cursor/mcp.json \
-  --add-deno-path \
+  --add_deno_path \
   && uvx wandb login
 ```
 
@@ -115,7 +115,7 @@ Enable the server for all Cursor projects, doesn't matter where this is run:
 ```bash
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
   --config_path ~/.cursor/mcp.json \
-  --add-deno-path \
+  --add_deno_path \
   && uvx wandb login
 ```
 
@@ -124,14 +124,14 @@ uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
 ```bash
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
   --config_path ~/.codeium/windsurf/mcp_config.json \
-  --add-deno-path \
+  --add_deno_path \
   && uvx wandb login
 ```
 
 ### Claude Code
 
 ```bash
-claude mcp add wandb -- uvx --from git+https://github.com/wandb/wandb-mcp-server wandb_mcp_server --add-deno-path && uvx wandb login
+claude mcp add wandb -- uvx --from git+https://github.com/wandb/wandb-mcp-server wandb_mcp_server --add_deno_path && uvx wandb login
 ```
 
 Passing an environment variable to Claude Code, e.g. api key:
@@ -148,7 +148,7 @@ Then run the below:
 ```bash
 uvx --from git+https://github.com/wandb/wandb-mcp-server add_to_client \
   --config_path ~/Library/Application\ Support/Claude/claude_desktop_config.json \
-  --add-deno-path \
+  --add_deno_path \
   && uvx wandb login
 ```
 
