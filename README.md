@@ -134,7 +134,7 @@ First ensure `uv` is installed, you might have to use brew to install depite `uv
 Then run the below:
 
 ```bash
-uvx --from git+https://github.com/wandb/wandb-mcp-server@add-sandbox-functionality -- add_to_client --config_path "~/Library/Application Support/Claude/claude_desktop_config.json" --add_deno_path && uvx wandb login
+uvx --from git+https://github.com/wandb/wandb-mcp-server -- add_to_client --config_path "~/Library/Application Support/Claude/claude_desktop_config.json" --add_deno_path && uvx wandb login
 ```
 
 
