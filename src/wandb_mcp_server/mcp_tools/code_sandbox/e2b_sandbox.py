@@ -287,10 +287,10 @@ class E2BSandbox:
         async with cls._get_sandbox_lock():
             if cls._shared_sandbox is not None:
                 try:
-                    await cls._shared_sandbox.close()
-                    logger.info("Closed shared E2B sandbox instance")
+                    await cls._shared_sandbox.kill()
+                    logger.info("Killed shared E2B sandbox instance")
                 except Exception as e:
-                    logger.error(f"Error closing shared E2B sandbox: {e}")
+                    logger.error(f"Error killing shared E2B sandbox: {e}")
                 finally:
                     cls._shared_sandbox = None
 
