@@ -74,9 +74,9 @@ def create_report(
     project_name: str,
     title: str,
     description: Optional[str] = None,
-    markdown_report_text: str = None,
+    markdown_report_text: Optional[str] = None,
     plots_html: Optional[Dict[str, str]] = None,
-) -> wr.Report:
+) -> str:
     """
     Create a new Weights & Biases Report and add text and charts. Useful to save/document analysis and other findings.
 
@@ -108,7 +108,6 @@ def create_report(
             for plot_name, html in plots_html.items():
                 wandb.log({plot_name: wandb.Html(html)})
                 plots_dict[plot_name] = html
-            wandb.finish()
 
             pg = []
             for k, v in plots_dict.items():
@@ -126,7 +125,7 @@ def create_report(
         else:
             pg = None
 
-        blocks = parse_report_content_enhanced(markdown_report_text)
+        blocks = parse_report_content_enhanced(markdown_report_text or "")
 
         # Add blocks if provided
         if pg:
@@ -138,6 +137,7 @@ def create_report(
 
         # Save the report
         report.save()
+        wandb.finish()
         logger.info(f"Created report: {title}")
         return report.url
 
