@@ -153,8 +153,7 @@ _server_args = None
 
 # Moved helper functions
 def _wandb_base_url() -> str:
-    # TODO: make configurable
-    return "https://api.wandb.ai"
+    return os.getenv("WANDB_BASE_URL", "https://api.wandb.ai")
 
 
 def _wandb_api_key_via_netrc_file(filepath: str) -> str | None:

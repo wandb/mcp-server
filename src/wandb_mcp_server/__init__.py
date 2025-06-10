@@ -18,6 +18,5 @@ __all__ = [
     "mcp",
     "cli",
     "query_paginated_weave_traces",
-    "get_weave_trace_server",
     "add_to_client_cli",
 ]
