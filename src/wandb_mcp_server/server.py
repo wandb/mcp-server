@@ -85,7 +85,7 @@ async def query_weave_traces_tool(
     filters: Dict = {},
     sort_by: str = "started_at",
     sort_direction: str = "desc",
-    limit: int = None,
+    limit: int = 10000000,
     include_costs: bool = True,
     include_feedback: bool = True,
     columns: list = [],
@@ -134,7 +134,7 @@ async def count_weave_traces_tool(
     try:
         # Call the synchronous count_traces function
         total_count = count_traces(
-            entity_name=entity_name, project_name=project_name, filters=filters
+            entity_name=entity_name, project_name=project_name, filters=filters or {}
         )
 
         # Create a copy of filters and ensure trace_roots_only is True
@@ -158,7 +158,7 @@ async def count_weave_traces_tool(
 @mcp.tool(description=QUERY_WANDB_GQL_TOOL_DESCRIPTION)
 async def query_wandb_tool(
     query: str,
-    variables: Dict[str, Any] = None,
+    variables: Optional[Dict[str, Any]] = None,
     max_items: int = 100,
     items_per_page: int = 20,
     save_filename: str = "",
@@ -179,16 +179,19 @@ async def create_wandb_report_tool(
     project_name: str,
     title: str,
     description: Optional[str] = None,
-    markdown_report_text: str = None,
+    markdown_report_text: str = "",
     plots_html: Optional[Union[Dict[str, str], str]] = None,
 ) -> str:
     # Handle plot_htmls if it's a JSON string
+    processed_plots_html = None
     if isinstance(plots_html, str):
         try:
-            plots_html = json.loads(plots_html)
+            processed_plots_html = json.loads(plots_html)
         except json.JSONDecodeError:
-            # If it's not valid JSON, keep it as is (though this will likely cause other errors)
-            pass
+            # If it's not valid JSON, treat as None
+            processed_plots_html = None
+    elif isinstance(plots_html, dict):
+        processed_plots_html = plots_html
 
     report_link = create_report(
         entity_name=entity_name,
@@ -196,18 +199,18 @@ async def create_wandb_report_tool(
         title=title,
         description=description,
         markdown_report_text=markdown_report_text,
-        plots_html=plots_html,
+        plots_html=processed_plots_html,
     )
     return f"The report was saved here: {report_link}"
 
 
 @mcp.tool(description=LIST_ENTITY_PROJECTS_TOOL_DESCRIPTION)
-def query_wandb_entity_projects(entity: Optional[str] = None) -> List[Dict[str, Any]]:
+def query_wandb_entity_projects(entity: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
     return list_entity_projects(entity)
 
 
 @mcp.tool(description=WANDBOT_TOOL_DESCRIPTION)
-def query_wandb_support_bot(question: str) -> str:
+def query_wandb_support_bot(question: str) -> Dict[str, Any]:
     return query_wandbot_api(question)
 
 
