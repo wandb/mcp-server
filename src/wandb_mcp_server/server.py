@@ -182,26 +182,26 @@ async def create_wandb_report_tool(
     markdown_report_text: str = "",
     plots_html: Optional[Union[Dict[str, str], str]] = None,
 ) -> str:
-    # Handle plot_htmls if it's a JSON string
-    processed_plots_html = None
-    if isinstance(plots_html, str):
-        try:
-            processed_plots_html = json.loads(plots_html)
-        except json.JSONDecodeError:
-            # If it's not valid JSON, treat as None
-            processed_plots_html = None
-    elif isinstance(plots_html, dict):
-        processed_plots_html = plots_html
-
-    report_link = create_report(
-        entity_name=entity_name,
-        project_name=project_name,
-        title=title,
-        description=description,
-        markdown_report_text=markdown_report_text,
-        plots_html=processed_plots_html,
-    )
-    return f"The report was saved here: {report_link}"
+    try:
+        result = create_report(
+            entity_name=entity_name,
+            project_name=project_name,
+            title=title,
+            description=description,
+            markdown_report_text=markdown_report_text,
+            plots_html=plots_html,
+        )
+        
+        # Build return message with processing details
+        result_message = f"The report was saved here: {result['url']}"
+        if result['processing_details']:
+            result_message += "\n\nReport processing details:\n" + "\n".join(f"- {detail}" for detail in result['processing_details'])
+        
+        return result_message
+        
+    except Exception as e:
+        # The create_report function now includes processing details in errors
+        raise e
 
 
 @mcp.tool(description=LIST_ENTITY_PROJECTS_TOOL_DESCRIPTION)

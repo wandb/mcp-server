@@ -36,6 +36,16 @@ Always provide the returned report link to the user.
 - Always use valid markdown for the report text.
 </plots_html_usage_guide>
 
+<plots_html_format_guide>
+**IMPORTANT: plots_html Parameter Format**
+- The plots_html parameter accepts either:
+  1. A dictionary where keys are chart names and values are HTML strings: {"chart1": "<html>...</html>", "chart2": "<html>...</html>"}
+  2. A single HTML string (will be automatically wrapped with key "chart")
+- Do NOT pass raw HTML as a JSON string - pass it directly as an HTML string
+- If you have multiple charts, use the dictionary format for better organization
+- The tool will provide feedback about how your input was processed
+</plots_html_format_guide>
+
 Args:
     entity_name: str, The W&B entity (team or username) - required
     project_name: str, The W&B project name - required
@@ -75,8 +85,8 @@ def create_report(
     title: str,
     description: Optional[str] = None,
     markdown_report_text: Optional[str] = None,
-    plots_html: Optional[Dict[str, str]] = None,
-) -> str:
+    plots_html: Optional[Union[Dict[str, str], str]] = None,
+) -> Dict[str, str]:
     """
     Create a new Weights & Biases Report and add text and charts. Useful to save/document analysis and other findings.
 
@@ -85,9 +95,40 @@ def create_report(
         project_name: The W&B project name
         title: Title of the W&B Report
         description: Optional description of the W&B Report
-        blocks: Optional list of W&B Report blocks (headers, paragraphs and tables of contents etc.)
-        plot_htmls: Optional dict of plot name and html string of any charts created as part of an analysis
+        markdown_report_text: Optional markdown text for the report body
+        plots_html: Optional dict of plot name and html string, or single HTML string
+
+    Returns:
+        Dict with 'url' and 'processing_details' keys
     """
+    import json
+    
+    # Process plots_html and collect warnings
+    processed_plots_html = None
+    processing_warnings = []
+    
+    if isinstance(plots_html, str):
+        try:
+            # First try to parse as JSON (dictionary)
+            processed_plots_html = json.loads(plots_html)
+            processing_warnings.append("Successfully parsed plots_html as JSON dictionary")
+        except json.JSONDecodeError:
+            # If it's not valid JSON, treat as raw HTML and wrap in dictionary
+            if plots_html.strip():  # Only if not empty
+                processed_plots_html = {"chart": plots_html}
+                processing_warnings.append("plots_html was not valid JSON, treated as raw HTML and wrapped with key 'chart'")
+            else:
+                processed_plots_html = None
+                processing_warnings.append("plots_html was empty string, no charts will be included")
+    elif isinstance(plots_html, dict):
+        processed_plots_html = plots_html
+        processing_warnings.append(f"Successfully processed plots_html dictionary with {len(plots_html)} chart(s)")
+    elif plots_html is None:
+        processing_warnings.append("No plots_html provided, report will contain only text content")
+    else:
+        processing_warnings.append(f"Unexpected plots_html type: {type(plots_html)}, no charts will be included")
+        processed_plots_html = None
+
     try:
         wandb.init(
             entity=entity_name, project=project_name, job_type="mcp_report_creation"
@@ -104,8 +145,8 @@ def create_report(
 
         # Log plots
         plots_dict = {}
-        if plots_html:
-            for plot_name, html in plots_html.items():
+        if processed_plots_html:
+            for plot_name, html in processed_plots_html.items():
                 wandb.log({plot_name: wandb.Html(html)})
                 plots_dict[plot_name] = html
 
@@ -139,11 +180,19 @@ def create_report(
         report.save()
         wandb.finish()
         logger.info(f"Created report: {title}")
-        return report.url
+        
+        return {
+            "url": report.url,
+            "processing_details": processing_warnings
+        }
 
     except Exception as e:
         logger.error(f"Error creating report: {e}")
-        raise
+        # Include processing details in the error for better debugging
+        error_msg = f"Error creating report: {e}"
+        if processing_warnings:
+            error_msg += f"\n\nProcessing details: {'; '.join(processing_warnings)}"
+        raise Exception(error_msg)
 
 
 def edit_report(
